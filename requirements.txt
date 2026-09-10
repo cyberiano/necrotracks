@@ -1,0 +1,9 @@
+# python3-rtmidi y python3-lgpio se instalan por apt (ver bin/remote/setup.sh)
+numpy~=2.5
+soundfile~=0.14
+sounddevice~=0.5
+mido~=1.3
+fastapi
+uvicorn
+luma.oled
+gpiozero

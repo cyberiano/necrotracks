@@ -1,0 +1,9 @@
+.idea/
+.DS_Store
+.venv/
+__pycache__/
+*.pyc
+# El audio vive solo en la Pi (/var/lib/necrotracks)
+*.wav
+*.mid
+*.zip
