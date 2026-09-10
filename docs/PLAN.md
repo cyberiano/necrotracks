@@ -41,7 +41,7 @@ es cambiar la matriz — nunca re-exportar canciones.
 **Perfil MVP — iRig Stomp I/O (2 salidas):**
 
 ```
-out1 (Pista) = FOH_L*0.7 + FOH_R*0.7
+out1 (Pista) = FOH_L*0.5 + FOH_R*0.5   # 0.5: la suma nunca puede clipear
 out2 (Click) = Click*1.0
 ```
 
