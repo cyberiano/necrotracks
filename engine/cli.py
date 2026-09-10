@@ -30,16 +30,19 @@ def main():
     player = Player(args.device, PROFILES[args.profile])
     player.on_end = done.set
     player.play(args.file)
-    t0 = time.monotonic()
-    while not done.wait(10):
+    t0 = last = time.monotonic()
+    while not done.wait(1):
         elapsed = time.monotonic() - t0
-        print(f"[{elapsed:7.1f}s] pos={player.position / SAMPLERATE:7.1f}s "
-              f"xruns={player.underflows} starved={player.starved} load={os.getloadavg()[0]:.2f}", flush=True)
+        if time.monotonic() - last >= 10:
+            last = time.monotonic()
+            print(f"[{elapsed:7.1f}s] pos={player.position / SAMPLERATE:7.1f}s "
+                  f"xruns={player.underflows} starved={player.starved} load={os.getloadavg()[0]:.2f}", flush=True)
         if args.seconds and elapsed >= args.seconds:
             player.stop()
             time.sleep(0.5)
             break
-    print(f"FIN xruns={player.underflows} starved={player.starved}")
+    player.close()
+    print(f"FIN pos={player.position / SAMPLERATE:.1f}s xruns={player.underflows} starved={player.starved}")
 
 
 if __name__ == "__main__":

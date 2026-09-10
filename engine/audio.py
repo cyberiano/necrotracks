@@ -17,6 +17,7 @@ SAMPLERATE = 48000
 RENDER_CHANNELS = 4  # FOH L, FOH R, Click, Guía
 BLOCK = 1024
 FADE = int(0.010 * SAMPLERATE)
+PREFILL_BLOCKS = int(0.5 * SAMPLERATE / BLOCK)  # buffer mínimo antes de arrancar
 
 
 def find_device(name):
@@ -26,8 +27,9 @@ def find_device(name):
     raise RuntimeError(f"No encuentro un device de audio que contenga {name!r}")
 
 
-def _reader(path, q, stop_evt):
-    """Lee el render en bloques y los encola. None al final (o si falla)."""
+def _reader(path, q, stop_evt, ready):
+    """Lee el render en bloques y los encola. None al final (o si falla).
+    `ready` se activa cuando hay PREFILL_BLOCKS encolados o se terminó el archivo."""
     try:
         with sf.SoundFile(path) as f:
             if f.samplerate != SAMPLERATE:
@@ -39,9 +41,12 @@ def _reader(path, q, stop_evt):
                 if data.shape[1] < RENDER_CHANNELS:
                     data = np.pad(data, ((0, 0), (0, RENDER_CHANNELS - data.shape[1])))
                 _put(q, data[:, :RENDER_CHANNELS], stop_evt)
+                if q.qsize() >= PREFILL_BLOCKS:
+                    ready.set()
     except Exception:
         log.exception("Error leyendo %s", path)
     _put(q, None, stop_evt)
+    ready.set()
 
 
 def _put(q, item, stop_evt):
@@ -69,21 +74,28 @@ class Player:
             dtype="float32", blocksize=BLOCK, latency=latency,
         )
         self.stream.start()
-        threading.Thread(target=self._audio_loop, daemon=True, name="audio").start()
+        self._thread = threading.Thread(target=self._audio_loop, daemon=True, name="audio")
+        self._thread.start()
 
     def play(self, path):
         q = queue.Queue(maxsize=self.buffer_blocks)
-        stop_evt = threading.Event()
-        threading.Thread(target=_reader, args=(path, q, stop_evt), daemon=True, name="reader").start()
-        self._cmds.put(("play", q, stop_evt))
+        stop_evt, ready = threading.Event(), threading.Event()
+        threading.Thread(target=_reader, args=(path, q, stop_evt, ready), daemon=True, name="reader").start()
+        self._cmds.put(("play", q, stop_evt, ready))
 
     def stop(self):
         self._cmds.put(("stop",))
 
+    def close(self):
+        self._cmds.put(("quit",))
+        self._thread.join(timeout=2)
+        self.stream.stop()
+        self.stream.close()
+
     def _audio_loop(self):
         silence = np.zeros((BLOCK, self.outputs), np.float32)
         ramp = np.linspace(0, 1, FADE, dtype=np.float32)[:, None]
-        cur = None  # (cola, evento de stop) de la canción en curso
+        cur = None  # (cola, evento de stop, evento de prefill) de la canción en curso
         fade_in = False
         while True:
             stopping = False
@@ -99,9 +111,15 @@ class Player:
                     self.position, self.playing = 0, True
                 elif cmd[0] == "stop" and cur:
                     stopping = True
+                elif cmd[0] == "quit":
+                    if cur:
+                        cur[1].set()
+                    return
 
             out = silence
-            if cur:
+            if cur and not cur[2].is_set() and not stopping:
+                pass  # esperando el prefill: silencio sin consumir ni contar como starvation
+            elif cur:
                 try:
                     block = cur[0].get_nowait()
                 except queue.Empty:
