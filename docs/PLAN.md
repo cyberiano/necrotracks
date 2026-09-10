@@ -191,6 +191,24 @@ Los WAV **nunca** van al repo.
 - **Repo público** → la Pi clona por HTTPS, sin deploy key.
 
 Pendiente:
-- Qué manda cada footswitch y el pedal de expresión, y en qué puerto (necesita a Cristian pisando)
-- Si el MIDI que manda la Pi sale por el DIN OUT del iRig
-- Estabilidad de 30 min con carga (Fase 1)
+- Qué manda cada footswitch y el pedal de expresión, y en qué puerto (necesita a Cristian pisando).
+  **Probar los dos modos del iRig: normal y stomp mode.**
+- **Deuda: MIDI OUT sin probar.** Faltan cables. Hasta probarlo, se asume que lo que la Pi manda
+  a `iRig Stomp IO MIDI 1` sale por el DIN OUT. Si no sale, plan B: cable USB-MIDI aparte.
+- Estabilidad de 30 min con carga (Fase 1) — **interrumpida**, ver hallazgos abajo.
+
+### Hallazgos de la prueba de estabilidad (2026-09-10)
+
+- Sin carga: 5 min limpios, `xruns=0 starved=0`, load 0.1, 35 °C.
+- **Escritura de 1 GB a la SD (fsync)**: ALSA sin xruns, pero el reader **no llegó a tiempo**:
+  `starved=547` (~12 s de huecos en ~50 s). La escritura saturó la SD y frenó las lecturas
+  por más de los 3 s del ring buffer. Al terminar la escritura se recuperó.
+  → Propuesta: **precargar la canción entera en RAM, ya ruteada** (2 ch float32 ≈ 115 MB
+  cada 5 min). Durante la reproducción no se toca la SD.
+- **El vúmetro de salida del iRig marcó clip** (rojo al máximo) durante la prueba. La señal
+  es de −40/−30 dBFS, así que no debería. Sin parlantes conectados. Causa sin confirmar. Hipótesis:
+  1. Corrupción del stream S24_3LE bajo carga (un desalineo de 24-bit empaquetado = ruido a full scale)
+  2. El driver interpreta mal el control de volumen del iRig (dmesg: *"Unlikely big volume range
+     (=65534), cval->res is probably wrong"*), y el "0 dB" que fijamos es en realidad ganancia alta
+  3. El vúmetro no está midiendo nuestro stream
+- Formato negociado: S24_3LE, 48 kHz, 2 ch, period 2048, buffer 6144 (128 ms).
