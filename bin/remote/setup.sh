@@ -26,11 +26,32 @@ base_param() {
   REBOOT=1
 }
 
+# Parámetro del kernel en cmdline.txt. Es una sola línea: si queda mal, la Pi no arranca.
+# Copia, agrega, verifica; si algo no cierra, restaura la copia.
+cmdline_param() {
+  local c="${CMDLINE:-/boot/firmware/cmdline.txt}" b
+  grep -qw -- "$1" "$c" && return 0
+  b="$c.bak-$(date +%Y%m%d-%H%M%S)"
+  cp "$c" "$b"
+  sed -i "1 s/\$/ $1/" "$c"
+  if [ "$(wc -l < "$c")" -gt 1 ] || ! grep -q "root=" "$c" || ! grep -qw -- "$1" "$c"; then
+    cp "$b" "$c"
+    echo "   cmdline.txt quedó mal: se restauró la copia"
+    return 1
+  fi
+  REBOOT=1
+}
+
 log "I2C (OLED) y SPI"
 [ -e /dev/i2c-1 ] || REBOOT=1
 raspi-config nonint do_i2c 0
 raspi-config nonint do_spi 0
 base_param 'dtparam=i2c_arm_baudrate=400000'
+
+log "USB en full speed en la Pi 3 (el iRig se traba con dwc_otg en high speed, ver docs/PLAN.md)"
+if grep -q "Raspberry Pi 3" /proc/device-tree/model 2>/dev/null; then
+  cmdline_param "dwc_otg.speed=1"
+fi
 
 log "Sin audio onboard, sin audio HDMI, sin Bluetooth"
 cfg_replace() { if grep -qE "$1" "$CFG"; then sed -i -E "s|$1|$2|" "$CFG"; REBOOT=1; fi; }

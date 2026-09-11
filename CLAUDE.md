@@ -19,7 +19,9 @@ práctico, sin sobreingeniería. Todo en español rioplatense (UI, docs, commits
 - **El iRig se traba** (saca basura o silencio, solo vuelve desenchufándolo) cuando la Pi 3B+ escribe fuerte
   en la SD. Ni ALSA ni el kernel lo detectan. Nada de I/O pesada mientras suena: el import está bloqueado
   mientras suena y escribe con tope de velocidad (`store.Throttle`).
-- iRig en el par de puertos USB **lejos del Ethernet** (`1-1.2`).
+- En la Pi 3B+ el USB va en full speed: **`dwc_otg.speed=1`** en `cmdline.txt` (lo aplica el bootstrap).
+  Sin eso el iRig se silencia solo a los ~25 min. Con eso, 34 min limpios.
+- iRig en el par de puertos USB **lejos del Ethernet** (`1-1.2` / `1-1.3`).
 - El stream de audio se abre una vez y no se reconfigura nunca durante un show.
 - `config.txt`: un `dtparam` de la base va **antes** del primer `dtoverlay` (ver `base_param` en el bootstrap).
 - Nunca `pkill -f` con un patrón que pueda coincidir con la línea de comando del propio SSH: matar por PID.

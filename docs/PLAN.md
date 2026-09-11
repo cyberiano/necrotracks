@@ -5,6 +5,51 @@ Complementa a `Reproductor multipista para vivo Necrotracks.md` (el *qué*); est
 
 ---
 
+## Estado actual y próximos pasos (al cierre del 2026-09-11, 00:40)
+
+**Hardware: la Pi 3B+ + iRig Stomp I/O es viable con `dwc_otg.speed=1`** (34 min limpios). Sin ese
+ajuste el iRig se silencia solo a los ~25 min. El iRig está sano: aguantó 34 min en la Mac. Detalle
+en "Diagnóstico del clipping" más abajo.
+
+**En la Pi hoy** (`necrotracks@192.168.1.32` por WiFi; el Ethernet está desenchufado):
+- Código viejo, `c6b2563`: solo el Player y el CLI de prueba (`python -m engine.cli --profile … ARCHIVO…`).
+- `cmdline.txt` con `dwc_otg.speed=1` (copia en `cmdline.txt.bak-20260910-235538`). `config.txt`
+  como después del bootstrap (sin ajustes de SD).
+- iRig en `1-1.3` (par de puertos lejos del Ethernet), con fuente externa.
+- `/var/lib/necrotracks/library/sands-of-time/`: armada a mano, sin `song.json` → **reimportar**.
+- `/var/lib/necrotracks/test/`: ~2 GB de archivos y logs de prueba. Se pueden borrar.
+- Nada corriendo.
+
+**En `main`, sin desplegar**: Fase 2 (import, set lists, show), el engine como servicio (socket,
+systemd, prioridad RT), el vigía de device perdido, el cursor recuperable y `dwc_otg.speed=1` en el
+bootstrap. 33 tests pasando en la Mac.
+
+**Próximos pasos, en orden:**
+1. **Desplegar** `main` en la Pi: `NECROTRACKS_HOST=necrotracks@192.168.1.32 bin/deploy.sh`
+   (instala `soxr` y activa `necrotracks-engine.service`, que arranca solo y se queda con el iRig).
+2. **Reimportar "Sands of time"** con el comando nuevo (la fuente está en
+   `library/sands-of-time/stems/click-pista.wav`: copiarla a `/tmp` antes de importar), crear una set
+   list de prueba y manejarla con `python -m engine.cli ctl load|play|stop|next|state|watch`.
+3. **Probar desenchufar y reenchufar el iRig** con el servicio corriendo: el engine tiene que salir,
+   systemd lo reinicia al volver el iRig, y la set list tiene que quedar cargada con el cursor.
+4. **Otro soak largo** (60+ min) con `dwc_otg.speed=1`, y después usarla en un ensayo.
+5. **Fase 3: web** (config + Show Mode) sobre el socket del engine.
+6. **Fase 4: controles**: MIDI Learn con antirrebote (mapa del iRig más abajo), LEDs de los
+   footswitches como indicador de estado, OLED SH1106 + encoder, botones GPIO.
+7. Fase 5 (hotspot, chequeo pre-show en la UI, pánico, apagado seguro) y Fase 6 (MIDI de automatización).
+
+**Pendientes y deudas:**
+- MIDI OUT hacia el DIN del iRig: sin probar (faltan cables).
+- LEDs de los footswitches: CC 20–23 = 0 apaga; falta encontrar qué valores dan verde y rojo.
+- Pisada larga del footswitch 4 (tap tempo): sin medir.
+- Probar la StudioLive 16R como perfil multipista.
+- `necrotracks.local` todavía resuelve también la IP vieja del Ethernet: los scripts usan
+  `NECROTRACKS_HOST` con la IP del WiFi hasta que se acomode.
+- La importación escribe con tope de 3 MB/s: validar en la Pi que importar no traba al iRig con el
+  stream abierto.
+
+---
+
 ## Decisiones tomadas
 
 | Tema | Decisión | Motivo |
@@ -377,9 +422,13 @@ Reglas que salen de acá:
     USB `dwc_otg` con un dispositivo de audio USB 1.1 detrás del hub interno).
     Nota: el engine corre igual en macOS (CoreAudio) sin cambios.
 15. **Prueba con `dwc_otg.speed=1`** (en `cmdline.txt`, copia en `cmdline.txt.bak-20260910-235538`):
-    todo el USB en full speed (12M), sin transaction translator. iRig en `1-1.3`. Set de 34 min en curso.
-    Si aguanta → la 3B+ sirve con este ajuste (Ethernet queda a 12 Mbit/s, irrelevante).
-    Si no → Raspberry Pi 4.
+    todo el USB en full speed (12M), sin transaction translator. iRig en `1-1.3`.
+    **Resultado: 34 min enteros con audio**, 0 xruns, sin errores USB, 32 °C; y después volvió a
+    sonar sin reenchufarlo (trabado habría quedado mudo). → **La Pi 3B+ es viable con
+    `dwc_otg.speed=1`**, que ahora aplica el bootstrap (solo en Pi 3). Ethernet queda a 12 Mbit/s:
+    irrelevante, el show va por WiFi.
+    ⚠️ Es una sola corrida buena contra una que falló a los 25 min: repetir un soak largo (60+ min)
+    y usarla en ensayos antes del primer show. Si vuelve a trabarse → Raspberry Pi 4.
 14. Guía externa de optimización revisada: los parámetros FIQ que propone ya son los de fábrica,
     lo de PipeWire/WirePlumber no aplica (ALSA directo), la prioridad RT no ataca esto (0 xruns
     siempre) y `alsactl init` no destraba el firmware del iRig. PipeWire o JACK tampoco: usan el
