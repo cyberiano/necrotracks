@@ -267,8 +267,17 @@ por apt (`--no-install-recommends`; todavía no están en el bootstrap):
 - Logo por HDMI con `mpv --vo=drm --image-display-duration=…`: anda.
 - Extraer el audio de un MP4 de 2 min: 2,7 s.
 - Monitor de prueba conectado: máximo 1024×768 (el overlay escala por hardware).
-**Falta la prueba que decide**: 30 min con el engine sonando y el video en bucle, con Cristian mirando el
-vúmetro del iRig. Si traba, Pi 4.
+**Integrado (2026-09-11)**: `engine/video.py` (un mpv siempre abierto, nice +10 respecto del engine, por
+su socket JSON; si se cae, se levanta de nuevo) e import de MP4/MOV en `library.py`. Probado con un video
+real de la banda ("There is a Place", H.264 720p30, 7,4 Mbps, AAC 44,1 kHz, 4:30, 255 MB):
+- Import por CLI: 169 s (casi todo es copiar el video a la SD con el tope de 3 MB/s).
+- Sonando (por el jack, en silencio): video por hardware, mpv ~17 % de CPU, load 0,9. Stop → logo.
+- El logo sale de `/var/lib/necrotracks/video-logo.png` (datos, no repo), achicado (`video-zoom=-0.9`).
+  mpv 0.40 dibuja un **damero** detrás de lo transparente por defecto: va `--background=color`.
+- Sincronía: con tolerancia de 40 ms la velocidad iba y venía (1,05/0,95): un cuadro son 33 ms. Queda
+  en 80 ms para corregir y 30 ms para soltar, con ganancia 0,5 y ±3 % de velocidad.
+**Falta la prueba que decide**: 30 min con el engine sonando por el iRig y el video, con Cristian mirando
+el vúmetro (y el proyector: que el logo se vea bien y el video vaya con el click). Si traba, Pi 4.
 
 ### Fase 6 — Automatización MIDI
 Reproducción de `.mid` sincronizada al playhead. Se exporta del DAW en el mismo timeline.

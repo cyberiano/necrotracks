@@ -21,13 +21,18 @@ from pathlib import Path
 
 log = logging.getLogger(__name__)
 
+# --background=color: por defecto mpv dibuja un damero detrás de las imágenes con transparencia (el logo).
 MPV_ARGS = ["--vo=gpu", "--gpu-context=drm", "--hwdec=v4l2m2m", "--no-audio", "--idle=yes", "--force-window=yes",
+            "--background=color", "--background-color=#000000",
             "--keep-open=yes", "--image-display-duration=inf", "--osd-level=0", "--no-osc",
             "--no-input-default-bindings", "--really-quiet"]
 LOGO_ZOOM = -0.9  # log2 del tamaño: el logo a ~54 % del ancho, centrado sobre negro
 SEEK = 0.3  # segundos de desfase para saltar
-TOLERANCE = 0.04  # segundos de desfase para empezar a corregir con la velocidad
-MAX_SPEED_ADJUST = 0.05
+# Un cuadro dura 33 ms: con menos margen que eso, la corrección persigue ruido de medición.
+TOLERANCE = 0.08  # desfase para empezar a corregir con la velocidad…
+SETTLED = 0.03  # …y para volver a velocidad normal
+GAIN = 0.5
+MAX_SPEED_ADJUST = 0.03
 SYNC_EVERY = 1.0
 STEP = 0.25
 RETRY = 10  # segundos entre intentos de levantar mpv (p. ej. sin pantalla conectada)
@@ -88,8 +93,7 @@ class Video:
         while True:
             if not self.mpv.alive():
                 self.mpv.start()
-                time.sleep(2)  # que abra la pantalla y el socket
-                if not self.mpv.alive():
+                if not self._wait_ready():
                     if not warned:
                         log.warning("video: mpv no arranca (¿hay pantalla por HDMI?): %s", self.mpv.error_output())
                         warned = True
@@ -103,6 +107,19 @@ class Video:
                 log.warning("video: %s", e)
                 time.sleep(1)
             time.sleep(STEP)
+
+    def _wait_ready(self, seconds=5):
+        """Espera a que mpv abra la pantalla y conteste por el socket."""
+        for _ in range(int(seconds / 0.25)):
+            time.sleep(0.25)
+            if not self.mpv.alive():
+                return False
+            try:
+                self.mpv.command("get_property", "idle-active")
+                return True
+            except (OSError, RuntimeError, ValueError):
+                pass
+        return self.mpv.alive()
 
     def step(self, s):
         """Lleva mpv a lo que corresponde según el estado del engine."""
@@ -149,9 +166,10 @@ class Video:
             self.mpv.command("seek", target, "absolute+exact")
             self._set_speed(1.0)
         elif abs(diff) > TOLERANCE:
-            self._set_speed(1.0 - max(-MAX_SPEED_ADJUST, min(MAX_SPEED_ADJUST, diff)))
-        else:
+            self._set_speed(1.0 - max(-MAX_SPEED_ADJUST, min(MAX_SPEED_ADJUST, diff * GAIN)))
+        elif abs(diff) < SETTLED:
             self._set_speed(1.0)
+        # entre SETTLED y TOLERANCE: sigue como está (sin ida y vuelta)
 
     def _set_speed(self, speed):
         speed = round(speed, 3)
