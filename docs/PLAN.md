@@ -372,9 +372,14 @@ Reglas que salen de acá:
     → **Pi 3B+ + iRig no es viable para vivo tal como está.**
 12. Al desenchufar el iRig, el engine **se queda colgado en silencio** (la posición se congela, sin
     error). La reconexión automática tiene que detectar también ese estado.
-13. **Mismo set con el iRig en la Mac** (mismo engine, mismo archivo): en curso. Si aguanta, la
-    culpable es la Pi 3B+ → probar `dwc_otg.speed=1` (gratis) y, si no alcanza, Pi 4. Si falla, el
-    sospechoso es el iRig y otra Pi no lo arreglaría.
+13. **Mismo set con el iRig en la Mac** (mismo engine, mismo archivo, 8 vueltas, 34 min): **llegó
+    entero con audio**, 0 xruns. → **El iRig está sano: la culpable es la Pi 3B+** (su controlador
+    USB `dwc_otg` con un dispositivo de audio USB 1.1 detrás del hub interno).
+    Nota: el engine corre igual en macOS (CoreAudio) sin cambios.
+15. **Prueba con `dwc_otg.speed=1`** (en `cmdline.txt`, copia en `cmdline.txt.bak-20260910-235538`):
+    todo el USB en full speed (12M), sin transaction translator. iRig en `1-1.3`. Set de 34 min en curso.
+    Si aguanta → la 3B+ sirve con este ajuste (Ethernet queda a 12 Mbit/s, irrelevante).
+    Si no → Raspberry Pi 4.
 14. Guía externa de optimización revisada: los parámetros FIQ que propone ya son los de fábrica,
     lo de PipeWire/WirePlumber no aplica (ALSA directo), la prioridad RT no ataca esto (0 xruns
     siempre) y `alsactl init` no destraba el firmware del iRig. PipeWire o JACK tampoco: usan el
