@@ -119,6 +119,22 @@ El perfil del iRig de la banda es `irig-click-pista`: **salida L = click, salida
 (el orden inverso al que yo había supuesto).
 Setlists y bloques en JSON. Todo operable por CLI antes de que exista la web.
 
+**Estado (2026-09-10): hecho en local, 29 tests, falta probar en la Pi.**
+- Import: carpeta, ZIP o archivo suelto (WAV/FLAC/AIFF/MP3). Conversión a 48 kHz con `soxr`. Render de
+  4 canales. Reemplazo atómico (si falla, la versión anterior queda intacta). Avisos de fase al sumar a
+  mono y de stems con duraciones distintas.
+- Un archivo estéreo suelto **exige** decir el formato (`click-pista` o `foh`): adivinar mal manda el click al PA.
+- **Import bloqueado mientras suena** (bandera en RAM, `/dev/shm`) y escritura con **tope de 3 MB/s** con
+  fsync por bloque. Riesgo residual: el stream queda abierto aun parado; si un import trabara al iRig,
+  habría que reenchufarlo antes de tocar. A validar en la Pi.
+- Set lists: bloques como etiqueta con comportamiento por defecto editable canción por canción; `stop`,
+  `arm_next` (default), `auto_next`, `wait` (cancelable con Stop, adelantable con Play) y `repeat`;
+  mover y chequeo pre-show.
+- Máquina de estados del show (`engine/show.py`): play, pausa, stop, siguiente, anterior, ir a. Un solo
+  hilo; el fin de canción llega del hilo de audio como evento.
+- Pausa y reanudar en el Player (con fades).
+- **A confirmar con Cristian**: Siguiente/Anterior **mientras suena** salta a esa canción y sigue sonando.
+
 ### Fase 3 — Web UI
 Sin build step. Config (biblioteca, setlists, perfiles, import) + Show Mode + estado por WebSocket.
 Degrada bien: si se corta el WS, muestra "desconectado" y no bloquea nada.

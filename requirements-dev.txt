@@ -1,0 +1,5 @@
+# Para correr los tests en la Mac: python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
+numpy~=2.5
+soundfile~=0.14
+soxr~=1.1
+pytest

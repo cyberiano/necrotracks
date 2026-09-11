@@ -1,7 +1,8 @@
 """Salida de audio: lee un render de 4 canales, aplica la matriz del perfil y escribe al device ALSA.
 
 El stream queda abierto siempre y escribe silencio cuando no hay canción: así el reloj
-de salida nunca se detiene y play/stop no reabren el device.
+de salida nunca se detiene y play/stop/pausa no reconfiguran el device (el iRig no tolera
+bien las reconfiguraciones, ver docs/PLAN.md).
 """
 import logging
 import queue
@@ -64,7 +65,8 @@ class Player:
         self.outputs = self.matrix.shape[0]
         self.buffer_blocks = int(buffer_seconds * SAMPLERATE / BLOCK)
         self.position = 0  # frames reproducidos de la canción actual
-        self.playing = False
+        self.playing = False  # hay una canción cargada (sonando o en pausa)
+        self.paused = False
         self.underflows = 0  # xruns reportados por ALSA
         self.starved = 0  # bloques en que el reader no llegó a tiempo
         self.on_end = None  # callback al terminar una canción (corre en el hilo de audio: que sea rápido)
@@ -86,6 +88,12 @@ class Player:
     def stop(self):
         self._cmds.put(("stop",))
 
+    def pause(self):
+        self._cmds.put(("pause",))
+
+    def resume(self):
+        self._cmds.put(("resume",))
+
     def close(self):
         self._cmds.put(("quit",))
         self._thread.join(timeout=2)
@@ -96,9 +104,9 @@ class Player:
         silence = np.zeros((BLOCK, self.outputs), np.float32)
         ramp = np.linspace(0, 1, FADE, dtype=np.float32)[:, None]
         cur = None  # (cola, evento de stop, evento de prefill) de la canción en curso
-        fade_in = False
+        fade_in = paused = False
         while True:
-            stopping = False
+            stopping = pausing = False
             while True:
                 try:
                     cmd = self._cmds.get_nowait()
@@ -107,18 +115,27 @@ class Player:
                 if cmd[0] == "play":
                     if cur:
                         cur[1].set()
-                    cur, fade_in, stopping = cmd[1:], True, False
+                    cur, fade_in, paused = cmd[1:], True, False
+                    stopping = pausing = False
                     self.position, self.playing = 0, True
                 elif cmd[0] == "stop" and cur:
                     stopping = True
+                elif cmd[0] == "pause" and cur and not paused:
+                    pausing = True
+                elif cmd[0] == "resume" and cur and paused:
+                    paused, fade_in = False, True
                 elif cmd[0] == "quit":
                     if cur:
                         cur[1].set()
                     return
 
             out = silence
-            if cur and not cur[2].is_set() and not stopping:
-                pass  # esperando el prefill: silencio sin consumir ni contar como starvation
+            idle = cur is not None and (paused or not cur[2].is_set())
+            if idle and stopping:
+                cur[1].set()  # en pausa o esperando el prefill no suena nada: se corta directo
+                cur, self.playing, paused = None, False, False
+            elif idle:
+                pass  # silencio sin consumir la cola ni contar como starvation
             elif cur:
                 try:
                     block = cur[0].get_nowait()
@@ -137,7 +154,7 @@ class Player:
                     if fade_in:
                         out[:FADE] *= ramp
                         fade_in = False
-                    if stopping:
+                    if stopping or pausing:
                         out[:FADE] *= ramp[::-1]
                         out[FADE:] = 0
                     np.clip(out, -1.0, 1.0, out=out)
@@ -145,6 +162,9 @@ class Player:
                 if stopping and cur:
                     cur[1].set()
                     cur, self.playing = None, False
+                elif pausing and cur:
+                    paused = True
+            self.paused = paused
 
             if self.stream.write(out):
                 self.underflows += 1
