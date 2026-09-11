@@ -1,0 +1,12 @@
+[Unit]
+Description=Necrotracks: hotspot WiFi si al arrancar no hay una red conocida
+After=NetworkManager.service
+Wants=NetworkManager.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/bash /opt/necrotracks/bin/remote/hotspot-fallback.sh
+
+[Install]
+WantedBy=multi-user.target

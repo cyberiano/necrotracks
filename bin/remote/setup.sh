@@ -97,6 +97,9 @@ log "Entorno Python"
 sudo -u "$NT_USER" "$APP/.venv/bin/pip" install -q --upgrade pip
 sudo -u "$NT_USER" "$APP/.venv/bin/pip" install -q -r "$APP/requirements.txt"
 
+log "Hotspot WiFi (se levanta solo si al arrancar no hay una WiFi conocida)"
+HOTSPOT_PSK="${HOTSPOT_PSK:-}" bash "$APP/bin/remote/hotspot.sh"
+
 log "iRig: volumen digital fijo en 0 dB"
 if amixer -c IO sget 'USB Streaming' > /dev/null 2>&1; then
   amixer -q -c IO sset 'USB Streaming' 0dB unmute
