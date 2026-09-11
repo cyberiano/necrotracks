@@ -57,6 +57,7 @@ SYNC_EVERY = 1.0
 STEP = 0.25
 RETRY = 10  # segundos entre intentos de levantar mpv (p. ej. sin pantalla conectada)
 PLYMOUTH_WAIT = 60  # segundos, como mucho, esperando que termine la pantalla de arranque
+MODE_CHECK = 5  # segundos entre chequeos de que mpv esté en el modo HDMI que corresponde (solo parado)
 
 
 def hdmi_modes(base="/sys/class/drm"):
@@ -241,7 +242,7 @@ class Video:
             time.sleep(0.5)
         if self.cache_dir:
             self.pattern = make_pattern(Path(self.cache_dir) / "patron-16x9.png")
-        warned = False
+        warned, last_check = False, time.monotonic()
         while True:
             if not self.mpv.alive():
                 self.mpv.start()
@@ -254,11 +255,25 @@ class Video:
                 log.info("video: mpv listo en el HDMI (%s)", getattr(self.mpv, "current_mode", None) or "modo preferido")
                 warned, self.loaded, self.paused = False, False, None
             try:
-                self.step(self.get_state())
+                s = self.get_state()
+                self.step(s)
+                if s["state"] == "stopped" and time.monotonic() - last_check >= MODE_CHECK:
+                    last_check = time.monotonic()
+                    self._check_mode()
             except (OSError, RuntimeError, ValueError) as e:
                 log.warning("video: %s", e)
                 time.sleep(1)
             time.sleep(STEP)
+
+    def _check_mode(self):
+        """Si mpv no está en el modo HDMI que corresponde, lo reinicia en ese modo. Pasa al arrancar (la
+        pantalla todavía no había mandado todos sus modos: medido, arrancó en 1024x768 con 1920x1080 elegido)
+        y si enchufan un proyector con la Pi prendida. Solo se llama parado: no corta un video."""
+        mode = getattr(self.mpv, "mode", None)
+        wanted = mode() if mode else None
+        if wanted and wanted != self.mpv.current_mode:
+            log.info("video: la pantalla va en %s y mpv está en %s: lo reinicio", wanted, self.mpv.current_mode)
+            self.mpv.restart()
 
     def _wait_ready(self, seconds=5):
         """Espera a que mpv abra la pantalla y conteste por el socket."""

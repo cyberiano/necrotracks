@@ -210,6 +210,20 @@ def test_reposo_con_video_en_loop_y_su_propio_encaje(tmp_path):
     assert len(mpv.cmds) == n + 1 and mpv.cmds[-1][1] == str(idle) and "video-zoom=-0.3219" in mpv.cmds[-1][4]
 
 
+def test_reinicia_mpv_si_no_esta_en_el_modo_que_corresponde(tmp_path):
+    v, mpv, clock, logo = make(tmp_path)
+    restarts = []
+    mpv.restart = lambda: restarts.append(True)
+    mpv.mode, mpv.current_mode = (lambda: "1920x1080"), "1024x768"  # arrancó antes de que la pantalla diera sus modos
+    v._check_mode()
+    assert restarts == [True]
+    mpv.current_mode = "1920x1080"  # ya está bien: nada
+    v._check_mode()
+    mpv.mode = lambda: None  # sin pantalla: nada
+    v._check_mode()
+    assert restarts == [True]
+
+
 def test_resolucion_por_el_engine(monkeypatch):
     from engine import daemon, store
     from test_show import FakePlayer
