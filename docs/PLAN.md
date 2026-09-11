@@ -225,9 +225,25 @@ Mismo canal 1 y puerto `MIDI 1`. Cada footswitch es un interruptor: alterna 127 
 | Footswitch D | CC 23 (127 / 0) |
 | ¿Cambio de modo? | CC 39 = 127 (llegó justo antes de las pisadas; sin confirmar) |
 
-⚠️ **Rebote**: una pisada del D mandó `0 → 127 → 0` en 140 ms. **El MIDI Learn necesita
-antirrebote** (ignorar repeticiones del mismo control dentro de ~200 ms) en los dos modos:
-si no, una pisada de "Next" puede saltearse una canción en vivo.
+Confirmado: en modo stomp cada footswitch es un **interruptor** (cada pisada prende/apaga su LED
+rojo y alterna 127 / 0). No manda nada al soltar.
+
+⚠️ **Rebote confirmado**: una pisada del D mandó `0 → 127 → 0` en 140 ms. **El MIDI Learn
+necesita antirrebote** (ignorar repeticiones del mismo control dentro de ~200 ms) en los dos
+modos: si no, una pisada de "Next" puede saltearse una canción en vivo.
+
+**Pisada larga (visto una vez, sin confirmar)**: mantener A ~3 s en modo stomp mandó
+**CC 91 = 127** una sola vez (en lugar del CC 20) y nada al soltar. El iRig parecería distinguir
+corta/larga por su cuenta. Falta confirmar con B–D y en modo normal.
+
+**Referencia externa** (tabla que encontró Cristian, fuente sin verificar): coincide en PC 0–3,
+CC 11 y CC 26, pero dice CC 22–25 para el modo stomp (medido: **20–23**), CC 39 = 0 (medido: 127)
+y "127 pisar / 0 soltar" (medido: interruptor). Datos útiles a probar:
+- CC 39 = aviso de cambio de modo (mantener 3 y 4 más de 1 s).
+- **LEDs de los footswitches controlables desde la Pi** mandando CC al iRig (1–64 verde,
+  65–127 rojo). Serviría como indicador de estado en la pedalera. Va por USB: se puede probar
+  sin los cables DIN. Los números de CC probablemente sean los medidos (20–23), no los de la tabla.
+- Arranque manteniendo el pulsador 1 = modo standalone (MIDI directo al DIN, sin host).
 
 Recomendación: usar el **modo normal** (Program Change). Un mensaje distinto por footswitch
 y sin estado de prendido/apagado que confunda con los LEDs. El Learn soporta los dos igual.
