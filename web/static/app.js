@@ -526,7 +526,10 @@ function viewSetlist(slug) {
         sl = await api('PUT', '/api/setlists/' + encodeURIComponent(slug), {name: sl.name, items: sl.items});
         saved = model();
         render();
-        toast('Guardada');
+        // El engine trabaja con su propia copia: si es la que está cargada y está parado, se recarga sola.
+        // Si no, el show sigue con la lista vieja (canciones que faltan, Siguiente apagado) sin que se note.
+        if (live.state?.slug !== slug || live.state.state !== 'stopped') toast('Guardada');
+        else if (await cmd('load', {setlist: slug})) toast('Guardada y recargada en el show');
       } catch (err) { toast(err.message, 'bad'); }
       return;
     }
@@ -666,18 +669,26 @@ function viewLibrary() {
 // ── Ajustes: salida de audio, pantalla HDMI, pantalla en reposo y controles MIDI ──
 
 const FIT_HELP = {fit: 'Entero; si la pantalla no es 16:9, con franjas.',
-  fill: 'Llena la pantalla y recorta lo que sobra.', stretch: 'Llena la pantalla deformando la imagen.'};
+  fill: 'Llena la pantalla y recorta lo que sobra.',
+  stretch: 'Llena la pantalla deformando la imagen. Ancho, alto y posición no se aplican.'};
 const signedPct = n => `${n > 0 ? '+' : ''}${n} %`;
+const FIT_KEYS = ['scale_x', 'scale_y', 'x', 'y'];
 
-// Controles de encaje (modo, escala, posición). Se usan para los videos y para la pantalla de reposo.
+// Controles de encaje (modo, ancho, alto, posición). Se usan para los videos y para la pantalla de reposo.
+// Ancho y alto van por separado: hay pantallas que deforman y hay que compensarlas en el escenario.
 function fitHtml(p, label, {pattern = false} = {}) {
   const modes = {fit: 'Ajustar', fill: 'Llenar', stretch: 'Estirar'};
   return `<div class="fit">
     <div class="field"><span>${esc(label)}</span>
       <div class="seg">${Object.entries(modes).map(([k, l]) => `<button data-fit-group="${p}" data-fit="${k}">${l}</button>`).join('')}</div>
       <small id="${p}-help" class="muted"></small></div>
-    <label class="field"><span>Escala <b id="${p}-scale-v"></b></span>
-      <input type="range" id="${p}-scale" data-fit-group="${p}" data-k="scale" min="50" max="120" step="1"></label>
+    <div class="grid2">
+      <label class="field"><span>Ancho <b id="${p}-scale_x-v"></b></span>
+        <input type="range" id="${p}-scale_x" data-fit-group="${p}" data-k="scale_x" min="50" max="120" step="1"></label>
+      <label class="field"><span>Alto <b id="${p}-scale_y-v"></b></span>
+        <input type="range" id="${p}-scale_y" data-fit-group="${p}" data-k="scale_y" min="50" max="120" step="1"></label>
+    </div>
+    <label class="fine"><input type="checkbox" id="${p}-link" data-fit-group="${p}"> Mover ancho y alto juntos</label>
     <div class="grid2">
       <label class="field"><span>Horizontal <b id="${p}-x-v"></b></span>
         <input type="range" id="${p}-x" data-fit-group="${p}" data-k="x" min="-50" max="50" step="0.5"></label>
@@ -691,7 +702,7 @@ function fitHtml(p, label, {pattern = false} = {}) {
 
 // Cada cambio se manda en vivo (agrupado cada 150 ms) y se ve al instante en la pantalla.
 function fitControl(v, p, url, reset, {pattern = false} = {}) {
-  const st = {fit: null, patternOn: false, timer: null};
+  const st = {fit: null, patternOn: false, timer: null, link: true};
   function render() {
     if (!st.fit) return;
     const locked = sounding();
@@ -700,12 +711,16 @@ function fitControl(v, p, url, reset, {pattern = false} = {}) {
       b.disabled = locked;
     });
     $(`#${p}-help`).textContent = FIT_HELP[st.fit.mode];
-    for (const k of ['scale', 'x', 'y']) {
+    for (const k of FIT_KEYS) {
       const input = $(`#${p}-${k}`);
       if (document.activeElement !== input) input.value = st.fit[k];
       input.disabled = locked;
     }
-    $(`#${p}-scale-v`).textContent = `${st.fit.scale} %`;
+    const link = $(`#${p}-link`);
+    link.checked = st.link;
+    link.disabled = locked;
+    $(`#${p}-scale_x-v`).textContent = `${st.fit.scale_x} %`;
+    $(`#${p}-scale_y-v`).textContent = `${st.fit.scale_y} %`;
     $(`#${p}-x-v`).textContent = signedPct(st.fit.x);
     $(`#${p}-y-v`).textContent = signedPct(st.fit.y);
     $(`#${p}-reset`).disabled = locked;
@@ -725,7 +740,10 @@ function fitControl(v, p, url, reset, {pattern = false} = {}) {
   }
   v.addEventListener('input', e => {
     if (e.target.dataset.fitGroup !== p || !st.fit) return;
-    st.fit[e.target.dataset.k] = +e.target.value;
+    if (e.target.id === `${p}-link`) { st.link = e.target.checked; return; }
+    const k = e.target.dataset.k;
+    st.fit[k] = +e.target.value;
+    if (st.link && (k === 'scale_x' || k === 'scale_y')) st.fit.scale_x = st.fit.scale_y = +e.target.value;
     render();
     send();
   });
@@ -736,7 +754,15 @@ function fitControl(v, p, url, reset, {pattern = false} = {}) {
     else if (b.id === `${p}-reset`) { st.fit = {...reset}; render(); send(); }
     else if (pattern && b.id === `${p}-pattern`) { st.patternOn = !st.patternOn; render(); send(st.patternOn); }
   });
-  return {set(fit, patternOn = false) { st.fit = {...fit}; st.patternOn = patternOn; render(); }, render};
+  return {
+    set(fit, patternOn = false) {
+      st.fit = {...fit};
+      st.patternOn = patternOn;
+      st.link = fit.scale_x === fit.scale_y;  // si vienen distintos, ya están separados a propósito
+      render();
+    },
+    render,
+  };
 }
 
 function viewSettings() {
@@ -783,6 +809,16 @@ function viewSettings() {
           Los cambios se ven al instante en la pantalla. Solo con la reproducción parada.</p>
       </div>
 
+      <h2 class="title">Sistema</h2>
+      <div class="panel">
+        <div id="sys-now" class="port">Cargando…</div>
+        <div class="actions">
+          <button id="sys-reboot" class="btn">${ic('reload')}Reiniciar</button>
+          <button id="sys-off" class="btn danger">${ic('power')}Apagar</button>
+          <span class="muted small">Apagá siempre desde acá: cortar la corriente de golpe puede arruinar la tarjeta SD.</span>
+        </div>
+      </div>
+
       <h2 class="title">Controles MIDI</h2>
       <div id="ct-port" class="port">Cargando…</div>
       <div class="table-wrap"><table class="controls">
@@ -796,8 +832,8 @@ function viewSettings() {
     </section></div>`;
 
   let data = null, learning = null, out = null, engineWas = live.engine;
-  const videoFit = fitControl(v, 'fit', '/api/fit', {mode: 'fit', scale: 100, x: 0, y: 0}, {pattern: true});
-  const idleFit = fitControl(v, 'idle', '/api/idle-fit', {mode: 'fit', scale: 54, x: 0, y: 0});
+  const videoFit = fitControl(v, 'fit', '/api/fit', {mode: 'fit', scale_x: 100, scale_y: 100, x: 0, y: 0}, {pattern: true});
+  const idleFit = fitControl(v, 'idle', '/api/idle-fit', {mode: 'fit', scale_x: 54, scale_y: 54, x: 0, y: 0});
 
   // Controles MIDI
   async function load() {
@@ -869,8 +905,30 @@ function viewSettings() {
     idleFit.set(idle.fit);
   }
 
+  // Sistema: temperatura, lugar libre y apagado
+  async function loadSystem() {
+    let s;
+    try { s = await api('GET', '/api/system'); } catch { return; }
+    const box = $('#sys-now');
+    if (!box) return;
+    const hot = s.temp !== null && s.temp >= 70;  // la Pi empieza a recortar a los 80
+    const temp = s.temp === null ? 'Sin sensor' : `${s.temp} °C`;
+    const parts = [`${(s.free / 1073741824).toFixed(1)} GB libres`];
+    if (s.uptime !== null) parts.push(`prendida hace ${s.uptime < 3600 ? Math.round(s.uptime / 60) + ' min' : Math.floor(s.uptime / 3600) + ' h ' + Math.round(s.uptime % 3600 / 60) + ' min'}`);
+    box.innerHTML = `<span class="chip ${hot ? 'warn' : 'ok'}">${ic(hot ? 'alert' : 'check')}${esc(temp)}</span>
+      <span>${esc(parts.join(' · '))}</span>
+      ${s.throttled ? `<div class="warn">${ic('alert')}<span>La Pi recortó por falta de tensión o por calor. Mirá la fuente y la ventilación.</span></div>` : ''}`;
+    renderPower();
+  }
+
+  function renderPower() {
+    const off = $('#sys-off'), reboot = $('#sys-reboot');
+    if (off) off.disabled = reboot.disabled = sounding();
+  }
+
   function onLive() {
     render();
+    renderPower();
     renderOutput();
     videoFit.render();
     idleFit.render();
@@ -913,6 +971,14 @@ function viewSettings() {
       } catch (err) { toast(err.message, 'bad'); }
     } else if (b.id === 'idle-logo') {
       try { await api('DELETE', '/api/idle'); toast('Volvió el logo'); loadHdmi(); } catch (err) { toast(err.message, 'bad'); }
+    } else if (b.id === 'sys-off' || b.id === 'sys-reboot') {
+      const off = b.id === 'sys-off';
+      if (!confirm(off ? '¿Apagar la Pi? Esperá a que se apaguen las luces antes de desenchufar.'
+        : '¿Reiniciar la Pi? Tarda menos de un minuto en volver.')) return;
+      try {
+        await api('POST', '/api/power', {action: off ? 'off' : 'reboot'});
+        toast(off ? 'Apagando…' : 'Reiniciando…');
+      } catch (err) { toast(err.message, 'bad'); }
     } else if (b.id === 'out-save') {
       try {
         const r = await api('POST', '/api/output', {profile: $('#out-profile').value, fallback: $('#out-fallback').value || null});
@@ -925,8 +991,10 @@ function viewSettings() {
   load();
   loadOutput();
   loadHdmi();
+  loadSystem();
   const timer = setInterval(load, 1000);
-  return {onLive, leave: () => clearInterval(timer)};
+  const sysTimer = setInterval(loadSystem, 5000);
+  return {onLive, leave: () => { clearInterval(timer); clearInterval(sysTimer); }};
 }
 
 // ── Arranque ─────────────────────────────────────────────────────────────────

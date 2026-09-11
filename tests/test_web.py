@@ -104,6 +104,24 @@ def test_pantalla_de_reposo(client):
     assert client.delete("/api/idle").status_code == 200 and not d.exists()  # vuelve al logo
 
 
+def test_sistema_y_apagado(client, monkeypatch):
+    store.DATA.mkdir(parents=True, exist_ok=True)
+    s = client.get("/api/system").json()
+    assert set(s) == {"temp", "throttled", "free", "uptime"} and s["free"] > 0  # en la Mac no hay sensor: None
+
+    calls = []
+    monkeypatch.setattr(web.subprocess, "run", lambda cmd, **kw: calls.append(cmd))
+    assert client.post("/api/power", json={"action": "reboot"}).status_code == 200
+    assert calls == [["sudo", "-n", "systemctl", "reboot"]]
+    assert client.post("/api/power", json={"action": "volar"}).status_code == 400
+    store.set_playing(True)
+    try:
+        assert client.post("/api/power", json={"action": "off"}).status_code == 409  # nunca mientras suena
+    finally:
+        store.set_playing(False)
+    assert len(calls) == 1
+
+
 def test_engine_caido(client):
     assert client.post("/api/cmd", json={"cmd": "play"}).status_code == 503
     assert client.get("/api/state").json() == {"engine": False}

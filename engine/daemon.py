@@ -17,7 +17,7 @@ con JSON por línea, que usan la web, la pedalera, el OLED y el CLI:
     → {"cmd": "set_output", "profile": "...", "fallback": "pi-jack"|null}   parado; reinicia el engine
     → {"cmd": "hdmi"}            ← modos de la pantalla, el elegido ("auto" o "WxH") y el que se usa
     → {"cmd": "set_hdmi", "mode": "auto"|"WxH"}   parado; reinicia solo el video (el audio no se toca)
-    → {"cmd": "set_fit", "fit": {"mode", "scale", "x", "y"}, "pattern": bool}   parado; en vivo, sin reiniciar
+    → {"cmd": "set_fit", "fit": {"mode", "scale_x", "scale_y", "x", "y"}, "pattern": bool}   parado; en vivo
     → {"cmd": "set_idle_fit", "fit": {...}}   el encaje de la pantalla de reposo; parado, en vivo
 
 Cada pedido responde {"ok": true} o {"ok": false, "error": "..."}. El engine no depende de

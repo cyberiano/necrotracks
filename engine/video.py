@@ -40,8 +40,8 @@ IDLE_DIR = "reposo"  # en los datos: la imagen o el video de reposo que se subi�
 IMAGE_EXT = {".png", ".jpg", ".jpeg", ".webp"}
 VIDEO_EXT = {".mp4", ".mov", ".m4v"}
 FIT_MODES = {"fit": "Ajustar", "fill": "Llenar", "stretch": "Estirar"}
-FIT_DEFAULT = {"mode": "fit", "scale": 100, "x": 0.0, "y": 0.0}
-IDLE_FIT_DEFAULT = {"mode": "fit", "scale": 54, "x": 0.0, "y": 0.0}  # el logo a ~54 % del ancho, centrado
+FIT_DEFAULT = {"mode": "fit", "scale_x": 100, "scale_y": 100, "x": 0.0, "y": 0.0}
+IDLE_FIT_DEFAULT = {"mode": "fit", "scale_x": 54, "scale_y": 54, "x": 0.0, "y": 0.0}  # el logo a ~54 %, centrado
 # Patrón de ajuste 16:9: grilla, zona segura del 5 % en rojo, borde blanco (tiene que verse entero) y cruz.
 PATTERN = ("color=c=0x111111:s=1920x1080,drawgrid=w=192:h=108:t=2:c=0x3a3a3a,"
            "drawbox=x=96:y=54:w=1728:h=972:c=0xc1121f:t=6,drawbox=x=0:y=0:w=1920:h=1080:c=white:t=12,"
@@ -105,23 +105,31 @@ def pick_mode(modes, wanted="auto"):
 
 
 def check_fit(fit, default=FIT_DEFAULT):
-    """Valida y normaliza un encaje: modo, escala (%) y posición (% del tamaño de la imagen)."""
-    f = {**default, **(fit or {})}
+    """Valida y normaliza un encaje: modo, escala de ancho y de alto (%) y posición (% del tamaño de la imagen).
+    Ancho y alto van por separado porque hay pantallas que deforman (la misma imagen ancha o alta de más)."""
+    f = dict(fit or {})
+    if "scale" in f:  # config o web de antes, con una sola escala para los dos ejes
+        f.setdefault("scale_x", f["scale"])
+        f.setdefault("scale_y", f.pop("scale"))
+        f.pop("scale", None)
+    f = {**default, **f}
     if f["mode"] not in FIT_MODES:
         raise ValueError(f"Encaje desconocido: {f['mode']}")
-    scale, x, y = float(f["scale"]), float(f["x"]), float(f["y"])
-    if not 50 <= scale <= 120:
+    sx, sy, x, y = float(f["scale_x"]), float(f["scale_y"]), float(f["x"]), float(f["y"])
+    if not (50 <= sx <= 120 and 50 <= sy <= 120):
         raise ValueError("La escala va de 50 a 120 %")
     if not (-50 <= x <= 50 and -50 <= y <= 50):
         raise ValueError("La posición va de −50 a 50 %")
-    return {"mode": f["mode"], "scale": round(scale), "x": round(x, 1), "y": round(y, 1)}
+    return {"mode": f["mode"], "scale_x": round(sx), "scale_y": round(sy), "x": round(x, 1), "y": round(y, 1)}
 
 
 def fit_props(fit):
-    """Propiedades de mpv para un encaje. Se pasan al cargar cada archivo (mpv las deshace al cambiar)."""
+    """Propiedades de mpv para un encaje. Se pasan al cargar cada archivo (mpv las deshace al cambiar).
+    Ojo: mpv ignora la escala y la posición con keepaspect=no, o sea en modo Estirar."""
     f = check_fit(fit)
     return {"keepaspect": f["mode"] != "stretch", "panscan": 1.0 if f["mode"] == "fill" else 0.0,
-            "video-zoom": round(math.log2(f["scale"] / 100), 4),
+            "video-zoom": 0, "video-scale-x": round(f["scale_x"] / 100, 4),
+            "video-scale-y": round(f["scale_y"] / 100, 4),
             "video-pan-x": f["x"] / 100, "video-pan-y": f["y"] / 100}
 
 

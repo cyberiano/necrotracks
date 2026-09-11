@@ -12,6 +12,7 @@ POST /api/import. Nada de esto corre mientras suena.
 import asyncio
 import json
 import shutil
+import subprocess
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
@@ -206,15 +207,24 @@ async def post_hdmi(body: HdmiIn):
 
 class FitIn(BaseModel):
     mode: str = "fit"
-    scale: float = 100
+    scale: float | None = None  # una sola escala: de antes de que ancho y alto fueran por separado
+    scale_x: float = 100
+    scale_y: float = 100
     x: float = 0
     y: float = 0
     pattern: bool | None = None
 
 
+def _fit(body):
+    f = {"mode": body.mode, "scale_x": body.scale_x, "scale_y": body.scale_y, "x": body.x, "y": body.y}
+    if body.scale is not None:
+        f["scale_x"] = f["scale_y"] = body.scale
+    return f
+
+
 @app.post("/api/fit")
 async def post_fit(body: FitIn):
-    req = {"cmd": "set_fit", "fit": {"mode": body.mode, "scale": body.scale, "x": body.x, "y": body.y}}
+    req = {"cmd": "set_fit", "fit": _fit(body)}
     if body.pattern is not None:
         req["pattern"] = body.pattern
     return _ok(await engine_request(req))
@@ -222,8 +232,65 @@ async def post_fit(body: FitIn):
 
 @app.post("/api/idle-fit")
 async def post_idle_fit(body: FitIn):
-    return _ok(await engine_request({"cmd": "set_idle_fit",
-                                     "fit": {"mode": body.mode, "scale": body.scale, "x": body.x, "y": body.y}}))
+    return _ok(await engine_request({"cmd": "set_idle_fit", "fit": _fit(body)}))
+
+
+# ── Sistema (temperatura y apagado) ────────────────────────────────────────────
+
+POWER = {"off": "poweroff", "reboot": "reboot"}
+
+
+class PowerIn(BaseModel):
+    action: str
+
+
+def _temperature():
+    try:
+        return round(int(Path("/sys/class/thermal/thermal_zone0/temp").read_text()) / 1000, 1)
+    except (OSError, ValueError):
+        return None  # no es una Pi (p. ej. la Mac)
+
+
+def _throttled():
+    """La bandera de la Pi: 0 = nunca le faltó tensión ni recortó por calor. None si no se puede leer."""
+    try:
+        out = subprocess.run(["vcgencmd", "get_throttled"], capture_output=True, text=True, timeout=2)
+        return int(out.stdout.split("=")[1], 16)
+    except (OSError, subprocess.SubprocessError, IndexError, ValueError):
+        return None
+
+
+def _uptime():
+    try:
+        return float(Path("/proc/uptime").read_text().split()[0])
+    except (OSError, ValueError, IndexError):
+        return None
+
+
+def _free():
+    try:
+        return shutil.disk_usage(store.DATA).free
+    except OSError:
+        return None
+
+
+@app.get("/api/system")
+def get_system():
+    return {"temp": _temperature(), "throttled": _throttled(), "free": _free(), "uptime": _uptime()}
+
+
+@app.post("/api/power")
+def post_power(body: PowerIn):
+    """Apaga o reinicia la Pi. Nunca mientras suena: cortaría el show."""
+    if body.action not in POWER:
+        raise HTTPException(400, f"Acción desconocida: {body.action}")
+    if store.is_playing():
+        raise HTTPException(409, "Está sonando: frená la reproducción primero")
+    try:
+        subprocess.run(["sudo", "-n", "systemctl", POWER[body.action]], check=True, capture_output=True, timeout=10)
+    except (OSError, subprocess.SubprocessError) as e:
+        raise HTTPException(500, f"No se pudo {'apagar' if body.action == 'off' else 'reiniciar'}: {e}") from None
+    return {"ok": True}
 
 
 @app.get("/api/info")

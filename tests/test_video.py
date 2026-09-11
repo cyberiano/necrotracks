@@ -56,7 +56,7 @@ def test_logo_cuando_no_suena_video(tmp_path):
     v, mpv, clock, logo = make(tmp_path)
     v.step(st("stopped"))
     assert mpv.cmds == [("loadfile", str(logo), "replace", -1, f"{fit_opts(IDLE_FIT_DEFAULT)},pause=no")]
-    assert "video-zoom=-0.889," in mpv.cmds[0][4]  # 54 %: como se veía el logo
+    assert "video-scale-x=0.54,video-scale-y=0.54," in mpv.cmds[0][4]  # 54 %: como se veía el logo
     v.step(st("stopped"))
     assert len(mpv.cmds) == 1  # nada nuevo
     v.step(st("playing", slug="dos", pos=3))  # canción sin video: sigue el logo
@@ -69,8 +69,8 @@ def test_video_sigue_al_audio(tmp_path):
     v.step(st("playing", pos=0.5))
     # posición 0,5 − latencia 0,1 + 0,33 de adelanto por lo que tarda mpv en arrancar
     assert mpv.cmds[-1] == ("loadfile", "/v/uno.mp4", "replace", -1,
-                            "start=0.730,keepaspect=yes,panscan=0,video-zoom=0,video-pan-x=0,video-pan-y=0,"
-                            "background-color=#00000000,pause=no")
+                            "start=0.730,keepaspect=yes,panscan=0,video-zoom=0,video-scale-x=1,video-scale-y=1,"
+                            "video-pan-x=0,video-pan-y=0,background-color=#00000000,pause=no")
     v.step(st("paused", pos=0.8))
     assert mpv.cmds[-1] == ("set_property", "pause", True)
     v.step(st("playing", pos=0.8))
@@ -189,12 +189,14 @@ def test_modos_de_la_pantalla(tmp_path):
 def test_encaje_del_video():
     from engine.video import check_fit, fit_opts
 
-    assert check_fit(None) == {"mode": "fit", "scale": 100, "x": 0.0, "y": 0.0}
-    assert fit_opts({"mode": "fill", "scale": 90, "x": 5, "y": -2.5}) == \
-        "keepaspect=yes,panscan=1,video-zoom=-0.152,video-pan-x=0.05,video-pan-y=-0.025"
+    assert check_fit(None) == {"mode": "fit", "scale_x": 100, "scale_y": 100, "x": 0.0, "y": 0.0}
+    assert check_fit({"scale": 80}) == {"mode": "fit", "scale_x": 80, "scale_y": 80, "x": 0.0, "y": 0.0}  # config vieja
+    # ancho y alto por separado: pantallas que deforman (mpv los ignora con keepaspect=no, o sea en Estirar)
+    assert fit_opts({"mode": "fill", "scale_x": 90, "scale_y": 100, "x": 5, "y": -2.5}) == \
+        "keepaspect=yes,panscan=1,video-zoom=0,video-scale-x=0.9,video-scale-y=1,video-pan-x=0.05,video-pan-y=-0.025"
     assert fit_opts({"mode": "stretch"}).startswith("keepaspect=no,panscan=0,")
     assert check_fit({"x": -50, "y": 50})["x"] == -50  # se puede correr hasta la mitad
-    for bad in ({"mode": "zoom"}, {"scale": 200}, {"x": 60}):
+    for bad in ({"mode": "zoom"}, {"scale_x": 200}, {"scale_y": 10}, {"x": 60}):
         with pytest.raises(ValueError):
             check_fit(bad)
 
@@ -206,16 +208,17 @@ def test_patron_y_encaje_en_vivo(tmp_path):
     v.pattern, v.pattern_on = Path("/run/patron.png"), True
     v.step(st("stopped"))
     assert mpv.cmds[-1] == ("loadfile", "/run/patron.png", "replace", -1,
-                            "keepaspect=yes,panscan=0,video-zoom=0,video-pan-x=0,video-pan-y=0,background-color=#00000000,pause=no")
-    v.set_fit({"mode": "fit", "scale": 95, "x": 1, "y": 0})  # en vivo, sobre el patrón
-    assert ("set_property", "video-zoom", round(np.log2(0.95), 4)) in mpv.cmds
+                            "keepaspect=yes,panscan=0,video-zoom=0,video-scale-x=1,video-scale-y=1,"
+                            "video-pan-x=0,video-pan-y=0,background-color=#00000000,pause=no")
+    v.set_fit({"mode": "fit", "scale_x": 95, "scale_y": 100, "x": 1, "y": 0})  # en vivo, sobre el patrón
+    assert ("set_property", "video-scale-x", 0.95) in mpv.cmds
     assert ("set_property", "video-pan-x", 0.01) in mpv.cmds
     v.step(st("playing", pos=0.5))  # arranca a sonar: se apaga el patrón y va el video, con el encaje nuevo
-    assert not v.pattern_on and mpv.cmds[-1][1] == "/v/uno.mp4" and "video-zoom=-0.074" in mpv.cmds[-1][4]
+    assert not v.pattern_on and mpv.cmds[-1][1] == "/v/uno.mp4" and "video-scale-x=0.95" in mpv.cmds[-1][4]
     v.step(st("stopped"))
     assert mpv.cmds[-1][1] == str(logo)  # parado de nuevo: el logo, no el patrón
     n = len(mpv.cmds)
-    v.set_fit({"scale": 100})  # con el logo no toca mpv
+    v.set_fit({"scale_x": 100, "scale_y": 100})  # con el logo no toca mpv
     assert len(mpv.cmds) == n
 
 
@@ -241,20 +244,21 @@ def test_reposo_con_video_en_loop_y_su_propio_encaje(tmp_path):
     idle = tmp_path / "reposo.mp4"
     idle.write_bytes(b"mp4")
     mpv, clock = FakeMpv(), Clock()
-    v = Video(None, lambda s: None, lambda: idle, mpv=mpv, clock=clock, idle_fit={"mode": "fill", "scale": 100},
-              fade=0)
+    v = Video(None, lambda s: None, lambda: idle, mpv=mpv, clock=clock,
+              idle_fit={"mode": "fill", "scale_x": 100, "scale_y": 100}, fade=0)
     v.step(st("stopped"))
     assert mpv.cmds[-1] == ("loadfile", str(idle), "replace", -1, "keepaspect=yes,panscan=1,video-zoom=0,"
-                            "video-pan-x=0,video-pan-y=0,background-color=#00000000,loop-file=inf,pause=no")
-    v.set_idle_fit({"mode": "fit", "scale": 80})  # en vivo
+                            "video-scale-x=1,video-scale-y=1,video-pan-x=0,video-pan-y=0,"
+                            "background-color=#00000000,loop-file=inf,pause=no")
+    v.set_idle_fit({"mode": "fit", "scale_x": 80, "scale_y": 80})  # en vivo
     assert ("set_property", "panscan", 0.0) in mpv.cmds
     n = len(mpv.cmds)
-    v.set_fit({"scale": 90})  # el encaje de los videos no toca el reposo
+    v.set_fit({"scale_x": 90, "scale_y": 90})  # el encaje de los videos no toca el reposo
     v.step(st("playing", slug="sin-video", pos=2))  # canción sin video: sigue el reposo, sin recargar
     assert len(mpv.cmds) == n
     os.utime(idle, (1, 1))  # se subió otro archivo con el mismo nombre: se recarga
     v.step(st("stopped"))
-    assert len(mpv.cmds) == n + 1 and mpv.cmds[-1][1] == str(idle) and "video-zoom=-0.3219" in mpv.cmds[-1][4]
+    assert len(mpv.cmds) == n + 1 and mpv.cmds[-1][1] == str(idle) and "video-scale-x=0.8" in mpv.cmds[-1][4]
 
 
 def test_reinicia_mpv_si_no_esta_en_el_modo_que_corresponde(tmp_path):
@@ -297,12 +301,13 @@ def test_resolucion_por_el_engine(monkeypatch):
     with pytest.raises(daemon.EngineError, match="no ofrece"):
         engine.handle({"cmd": "set_hdmi", "mode": "800x480"})
 
-    assert info["fit"] == {"mode": "fit", "scale": 100, "x": 0.0, "y": 0.0} and info["pattern"] is False
-    resp = engine.handle({"cmd": "set_fit", "fit": {"mode": "fill", "scale": 96, "x": 0, "y": 1}, "pattern": True})
-    assert resp["fit"]["scale"] == 96 and FakeVideo.pattern_on is True and fits[-1]["mode"] == "fill"
+    assert info["fit"] == {"mode": "fit", "scale_x": 100, "scale_y": 100, "x": 0.0, "y": 0.0} and info["pattern"] is False
+    resp = engine.handle({"cmd": "set_fit", "fit": {"mode": "fill", "scale_x": 96, "scale_y": 100, "x": 0, "y": 1},
+                          "pattern": True})
+    assert resp["fit"]["scale_x"] == 96 and FakeVideo.pattern_on is True and fits[-1]["mode"] == "fill"
     assert store.read_json(daemon.config_path())["video_fit"]["y"] == 1.0
     with pytest.raises(ValueError, match="escala"):
-        engine.handle({"cmd": "set_fit", "fit": {"scale": 10}})
+        engine.handle({"cmd": "set_fit", "fit": {"scale_x": 10}})
 
 
 def make_mp4(path, seconds=1):
