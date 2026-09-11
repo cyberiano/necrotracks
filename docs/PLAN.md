@@ -232,9 +232,35 @@ rojo y alterna 127 / 0). No manda nada al soltar.
 necesita antirrebote** (ignorar repeticiones del mismo control dentro de ~200 ms) en los dos
 modos: si no, una pisada de "Next" puede saltearse una canción en vivo.
 
-**Pisada larga (visto una vez, sin confirmar)**: mantener A ~3 s en modo stomp mandó
-**CC 91 = 127** una sola vez (en lugar del CC 20) y nada al soltar. El iRig parecería distinguir
-corta/larga por su cuenta. Falta confirmar con B–D y en modo normal.
+**Footswitches numerados 1–4 en el chasis** (A–D en las notas de arriba = 1–4). Cada uno tiene
+una función al mantenerlo (serigrafía del panel):
+
+| Footswitch | Mantener | Medido |
+|---|---|---|
+| 1 | BANK DOWN | CC 91 = 127, sin cambiar el LED |
+| 2 | BANK UP | CC 90 = 127, sin cambiar el LED |
+| 3 | TUNER | no manda MIDI |
+| 4 | TAP TEMPO | sin probar |
+
+1+2 = LOOPER, 3+4 = STOMP (cambio de modo; LED "STOMP MODE" en el panel). La pisada larga
+**no cambia el LED** y manda su propio mensaje: sirve como segunda acción por footswitch (1 y 2).
+Vúmetro del panel = **DEVICE OUTPUT** (5 LEDs).
+
+**LEDs controlables desde la Pi** (confirmado): CC 20 = 0 enviado al iRig apagó el LED del 1.
+CC 20 = 32 **no** lo prendió en verde (la escala 1–64 verde / 65–127 rojo de la referencia no
+aplica tal cual). Falta encontrar cómo prender verde/rojo.
+
+⚠️ **Silencio sin explicar (22:45–22:47)**: con el set sonando y la Pi sana (engine vivo,
+`xruns=0`, ALSA consumiendo a 48 kHz, sin errores USB), el iRig dejó de sacar audio (DEVICE
+OUTPUT apagado). Mantener y tocar el 3 no lo recuperó (el tuner no silencia la salida, según
+Cristian). Sospechosos: cuelgue espontáneo, el CC 20 = 32 enviado al iRig o la pisada larga
+del 3. → Se repite el set **sin interacción** (sin MIDI hacia el iRig, sin pisadas largas).
+
+Soak 1: **23 min con WAV real** (click en L, pista en R), 6 canciones seguidas con el stream
+abierto, **0 xruns, 0 starved**, 33 °C, load < 0.2, con captura MIDI y pedaleo activos.
+
+**Requisito nuevo**: el engine tiene que **detectar la desconexión del iRig y reconectarse solo**
+cuando vuelve (hoy no lo hace).
 
 **Referencia externa** (tabla que encontró Cristian, fuente sin verificar): coincide en PC 0–3,
 CC 11 y CC 26, pero dice CC 22–25 para el modo stomp (medido: **20–23**), CC 39 = 0 (medido: 127)
