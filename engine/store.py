@@ -51,11 +51,17 @@ def write_json(path, obj):
     os.replace(tmp, path)
 
 
-class Throttle:
-    """Limita el ritmo de escritura: llamar a wrote(n, archivo) después de escribir n bytes."""
+class Busy(Exception):
+    """Arrancó la reproducción en medio de una escritura grande."""
 
-    def __init__(self, rate=None):
+
+class Throttle:
+    """Limita el ritmo de escritura: llamar a wrote(n, archivo) después de escribir n bytes.
+    Con guard=True corta (Busy) si arranca la reproducción a mitad de camino."""
+
+    def __init__(self, rate=None, guard=False):
         self.rate = rate or WRITE_RATE
+        self.guard = guard
         self.start = time.monotonic()
         self.total = 0
 
@@ -63,14 +69,16 @@ class Throttle:
         if fileobj is not None:
             fileobj.flush()
             os.fsync(fileobj.fileno())
+        if self.guard and is_playing():
+            raise Busy("Arrancó la reproducción: se cortó la escritura para no trabar al iRig")
         self.total += nbytes
         ahead = self.total / self.rate - (time.monotonic() - self.start)
         if ahead > 0:
             time.sleep(ahead)
 
 
-def copy_stream(fi, fo, rate=None, chunk=512 * 1024):
-    throttle = Throttle(rate)
+def copy_stream(fi, fo, rate=None, chunk=512 * 1024, guard=False):
+    throttle = Throttle(rate, guard)
     while block := fi.read(chunk):
         fo.write(block)
         throttle.wrote(len(block), fo)

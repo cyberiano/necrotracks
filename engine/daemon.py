@@ -24,7 +24,7 @@ from .show import Show
 log = logging.getLogger("necrotracks.engine")
 
 DEFAULT_CONFIG = {"profile": profiles.DEFAULT, "setlist": None}
-EMPTY_STATE = {"setlist": None, "state": "stopped", "index": 0, "count": 0, "song": None, "block": None,
+EMPTY_STATE = {"setlist": None, "slug": None, "state": "stopped", "index": 0, "count": 0, "song": None, "block": None,
                "behavior": None, "next": None, "position": 0.0, "duration": 0.0, "wait_remaining": None}
 SHOW_COMMANDS = {"play", "pause", "play_pause", "stop", "next", "prev"}
 

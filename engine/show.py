@@ -51,6 +51,7 @@ class Show:
             sounding = self.state in ("playing", "paused")
             return {
                 "setlist": self.setlist["name"],
+                "slug": self.setlist["slug"],
                 "state": self.state,
                 "index": self.index,
                 "count": len(self.items),

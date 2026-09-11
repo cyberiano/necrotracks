@@ -1,0 +1,19 @@
+[Unit]
+Description=Necrotracks web (configuración y Show Mode)
+After=network.target necrotracks-engine.service
+
+[Service]
+User=@USER@
+WorkingDirectory=/opt/necrotracks
+ExecStart=/opt/necrotracks/.venv/bin/python -m web
+Environment=PYTHONUNBUFFERED=1
+Restart=always
+RestartSec=2
+# Puerto 80 sin correr como root
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+# Nunca le compite al audio: la menor prioridad de CPU y de disco
+Nice=10
+IOSchedulingClass=idle
+
+[Install]
+WantedBy=multi-user.target

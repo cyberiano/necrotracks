@@ -3,3 +3,7 @@ numpy~=2.5
 soundfile~=0.14
 soxr~=1.1
 pytest
+# web: tests (TestClient usa httpx) y probarla en la Mac con `python -m web`
+fastapi
+uvicorn
+httpx

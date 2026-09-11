@@ -90,9 +90,11 @@ def import_song(src, name=None, layout=None, force=False, rate=None):
     new, old, final = lib / f"{slug}.new", lib / f"{slug}.old", lib / slug
     shutil.rmtree(new, ignore_errors=True)
     try:
-        song = _build(src, new, name, slug, layout, rate)
-    except BaseException:
+        song = _build(src, new, name, slug, layout, rate, guard=not force)
+    except BaseException as e:
         shutil.rmtree(new, ignore_errors=True)
+        if isinstance(e, store.Busy):  # arrancó a sonar a mitad del import
+            raise ImportProblem(str(e)) from None
         raise
     shutil.rmtree(old, ignore_errors=True)
     if final.exists():
@@ -119,7 +121,7 @@ def _members(src):
     return [(src.name, lambda: src.open("rb"))]
 
 
-def _build(src, dest, name, slug, layout, rate):
+def _build(src, dest, name, slug, layout, rate, guard=False):
     stems = dest / "stems"
     stems.mkdir(parents=True)
     audio, midi = [], []
@@ -130,7 +132,7 @@ def _build(src, dest, name, slug, layout, rate):
         if (stems / fname).exists():
             raise ImportProblem(f"Archivo repetido: {fname}")
         with opener() as fi, open(stems / fname, "wb") as fo:
-            store.copy_stream(fi, fo, rate)
+            store.copy_stream(fi, fo, rate, guard=guard)
         (audio if ext in AUDIO_EXT else midi).append(fname)
     if not audio:
         raise ImportProblem(f"No hay archivos de audio. {CONVENTIONS}")
@@ -154,7 +156,7 @@ def _build(src, dest, name, slug, layout, rate):
         sources = {role: stems / f if infos[role].samplerate == SAMPLERATE
                    else _resample(stems / f, Path(tmp) / f"{role}.wav")
                    for role, f in roles.items()}
-        frames, peak, rms = _render(sources, dest / "render.wav", rate)
+        frames, peak, rms = _render(sources, dest / "render.wav", rate, guard)
 
     stereo = "foh_l" in roles or ("foh" in roles and infos["foh"].channels == 2)
     if stereo and rms["foh"] > 1e-6:
@@ -241,13 +243,13 @@ def _resample(path, dst):
     return dst
 
 
-def _render(sources, dst, rate):
+def _render(sources, dst, rate, guard=False):
     files = {role: sf.SoundFile(str(p)) for role, p in sources.items()}
     try:
         frames = max(f.frames for f in files.values())
         peak = np.zeros(4)
         sumsq = np.zeros(3)  # FOH L, FOH R, suma mono
-        throttle = store.Throttle(rate)
+        throttle = store.Throttle(rate, guard)
         with open(dst, "w+b") as fo, sf.SoundFile(fo, "w", SAMPLERATE, 4, subtype="PCM_24", format="WAV") as out:
             for start in range(0, frames, BLOCK):
                 n = min(BLOCK, frames - start)
