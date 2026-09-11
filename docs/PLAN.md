@@ -283,6 +283,9 @@ antena, las ocultas no se listan), conecta con contraseña y olvida las guardada
 `necrotracks-hotspot` no se puede borrar desde la web**: es lo único que queda si en el escenario no hay red
 conocida. Nada de esto mientras suena. Ojo al probar: cambiar de red **corta la web y el SSH**; si la
 contraseña está mal, la Pi queda sin red hasta reiniciarla (ahí vuelve el hotspot).
+**Lo que costó encontrar: sin `sudo`, `nmcli` no escanea** — contesta lo que tiene en la caché, que era solo la
+red conectada (medido en la Pi: sin sudo, 1 red; con `sudo` y `--rescan yes`, 10). La lista va con `sudo` y
+`--rescan auto`, y el botón "Buscar redes" fuerza `yes`, que tarda **~8 s**: por eso avisa mientras busca.
 
 ### Visuales por HDMI (pedido 2026-09-11)
 Canciones como MP4 (audio L = click, R = pista) con el video por HDMI a un proyector. **Formato: H.264
