@@ -254,9 +254,19 @@ details.tool summary { cursor: pointer; font: 700 14px/1 var(--display); letter-
 .seg button:last-child { border-right: 0; }
 .seg button.on { color: #0a0a0c; background: var(--text); }
 .seg button:disabled { opacity: .35; cursor: default; }
-/* los campos llevan appearance: none; el deslizante necesita la nativa (en iOS, si no, no se ve) */
+/* los campos llevan appearance: none; el deslizante y el casillero necesitan la nativa
+   (si no, no se ven: el casillero quedaba sin mostrar si estaba tildado) */
 input[type=range] { width: 100%; height: 30px; padding: 0; background: none; border: 0;
   -webkit-appearance: auto; appearance: auto; accent-color: var(--accent); }
+/* Casillero propio: el nativo no se distingue tildado de sin tildar en el tema oscuro */
+input[type=checkbox] { position: relative; width: 20px; height: 20px; flex: none; margin: 0; padding: 0;
+  background: var(--bg-soft); border: 1px solid var(--line-2); cursor: pointer; }
+input[type=checkbox]:checked { background: var(--accent); border-color: var(--accent); }
+input[type=checkbox]:checked::after { content: ""; position: absolute; left: 5px; top: 2px; width: 6px; height: 11px;
+  border: solid #fff; border-width: 0 2.5px 2.5px 0; transform: rotate(42deg); }
+input[type=checkbox]:disabled { opacity: .35; cursor: default; }
+.fit .check { display: flex; align-items: center; gap: 9px; margin-top: -6px; font-size: 13.5px;
+  color: var(--muted); cursor: pointer; user-select: none; -webkit-user-select: none; }
 
 /* ── Controles ─────────────────────────────────────────────────────────── */
 .controls td.acts { width: 1%; }

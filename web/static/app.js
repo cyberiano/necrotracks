@@ -688,7 +688,7 @@ function fitHtml(p, label, {pattern = false} = {}) {
       <label class="field"><span>Alto <b id="${p}-scale_y-v"></b></span>
         <input type="range" id="${p}-scale_y" data-fit-group="${p}" data-k="scale_y" min="50" max="120" step="1"></label>
     </div>
-    <label class="fine"><input type="checkbox" id="${p}-link" data-fit-group="${p}"> Mover ancho y alto juntos</label>
+    <label class="check"><input type="checkbox" id="${p}-link" data-fit-group="${p}"><span>Mover ancho y alto juntos</span></label>
     <div class="grid2">
       <label class="field"><span>Horizontal <b id="${p}-x-v"></b></span>
         <input type="range" id="${p}-x" data-fit-group="${p}" data-k="x" min="-50" max="50" step="0.5"></label>
