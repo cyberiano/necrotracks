@@ -86,7 +86,9 @@ const sounding = () => live.state && live.state.state !== 'stopped';
 function renderConn() {
   const c = $('#conn'), b = $('#banner');
   let cls = 'ok', txt, banner = '', kind = '';
-  if (!webOk()) {
+  if (!live.at) {
+    cls = ''; txt = 'Conectando…';  // todavía no llegó el primer estado: no es un corte
+  } else if (!webOk()) {
     cls = 'bad'; txt = 'Sin conexión';
     banner = 'Sin conexión con Necrotracks. Si estaba sonando, sigue sonando: lo que se cortó es la web.';
   } else if (!live.engine) {
