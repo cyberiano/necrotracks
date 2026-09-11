@@ -45,7 +45,9 @@ en "Diagnóstico del clipping" más abajo.
   Perfil creado en la Pi; **falta probarlo con el iPhone** (Cristian no estaba en casa).
 - **Jack de la Pi como respaldo** (perfil `pi-jack`, `fallback` en `config.json`): si al arrancar no está
   la placa del perfil elegido, sale por el jack; cuando vuelve, con la reproducción parada, el engine se
-  reinicia para usarla. La web lo avisa en el Show y se elige en Ajustes. **Falta escucharlo.**
+  reinicia para usarla. La web lo avisa en el Show y se elige en Ajustes. En la Pi (bootstrap + reinicio):
+  el engine arranca por el iRig, el jack abre y reproduce (0 xruns) y quedó en 0 dB. **Falta escucharlo.**
+  Ojo: con el audio integrado prendido, el jack es la placa 0 y el iRig la 1 (el código busca por nombre).
 
 **Próximos pasos, en orden:**
 1. **Usarla en un ensayo** (el primer uso real) manejándola desde la web, con el hotspot. Antes: probar
