@@ -170,7 +170,11 @@ class Player:
                 cur[1].set()  # en pausa o esperando el prefill no suena nada: se corta directo
                 cur, self.playing, paused = None, False, False
             elif idle:
-                pass  # silencio sin consumir la cola ni contar como starvation
+                # Silencio sin consumir la cola ni contar como starvation. Una pausa que llega mientras
+                # se llena el buffer (antes de que suene nada) tiene que quedar: si se perdiera, el show
+                # quedaría "en pausa" con el audio sonando.
+                if pausing:
+                    paused = True
             elif cur:
                 try:
                     block = cur[0].get_nowait()

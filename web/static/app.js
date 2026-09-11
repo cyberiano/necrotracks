@@ -120,6 +120,10 @@ function route() {
   const tab = TAB_OF[name] || (views[name] ? name : 'show');
   document.querySelectorAll('#tabs a').forEach(a => a.classList.toggle('on', a.getAttribute('href') === '#' + tab));
   window.scrollTo(0, 0);
+  // Cada vista le pone sus escuchadores a #view: se reemplaza por uno limpio para que no se acumulen
+  // (si no, después de ir y volver, un toque en Play mandaba play_pause dos veces: play y pausa).
+  const old = $('#view'), fresh = old.cloneNode(false);
+  old.replaceWith(fresh);
   current = fn(arg ? decodeURIComponent(arg) : null);
 }
 
@@ -306,9 +310,16 @@ function viewShow() {
     ol.querySelectorAll('li[data-i]').forEach(li => li.classList.toggle('cur', +li.dataset.i === s.index));
   }
 
+  let lastTap = {cmd: null, at: 0};
   v.addEventListener('click', async e => {
     const b = e.target.closest('button');
-    if (b?.dataset.cmd) return cmd(b.dataset.cmd);
+    if (b?.dataset.cmd) {
+      // En el escenario un doble toque no puede convertirse en play + pausa
+      const now = Date.now();
+      if (lastTap.cmd === b.dataset.cmd && now - lastTap.at < 300) return;
+      lastTap = {cmd: b.dataset.cmd, at: now};
+      return cmd(b.dataset.cmd);
+    }
     if (b?.dataset.load) {
       if (await cmd('load', {setlist: b.dataset.load})) { detailSlug = null; hidePicker(); }
       return;
