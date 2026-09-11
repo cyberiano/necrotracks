@@ -59,6 +59,9 @@ log "Jack de la Pi como salida de respaldo; sin audio HDMI, sin Bluetooth"
 cfg_replace() { if grep -qE "$1" "$CFG"; then sed -i -E "s|$1|$2|" "$CFG"; REBOOT=1; fi; }
 cfg_replace '^dtparam=audio=off$' 'dtparam=audio=on'
 cfg_replace '^dtoverlay=vc4-kms-v3d$' 'dtoverlay=vc4-kms-v3d,noaudio'
+# Memoria contigua para video (CMA): con los 256 MB por defecto quedan ~60 MB para mpv y el decodificador
+# se queda sin buffers (el video se congela en el primer cuadro). Libre, la usa el resto del sistema.
+cfg_replace '^dtoverlay=vc4-kms-v3d,noaudio$' 'dtoverlay=vc4-kms-v3d,noaudio,cma-384'
 grep -qxF 'dtoverlay=disable-bt' "$CFG" || { echo 'dtoverlay=disable-bt' >> "$CFG"; REBOOT=1; }
 systemctl disable --now hciuart bluetooth 2>/dev/null || true
 
