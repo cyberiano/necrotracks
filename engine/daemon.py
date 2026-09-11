@@ -40,7 +40,7 @@ DEFAULT_CONFIG = {"profile": profiles.DEFAULT, "fallback": profiles.FALLBACK, "s
                   "video_fit": dict(FIT_DEFAULT), "idle_fit": dict(IDLE_FIT_DEFAULT),
                   "midi": {"port": controls.DEFAULT_PORT, "map": controls.DEFAULT_MAP}}
 EMPTY_STATE = {"setlist": None, "slug": None, "state": "stopped", "index": 0, "count": 0, "song": None,
-               "song_slug": None, "block": None,
+               "song_slug": None, "block": None, "note": None,
                "behavior": None, "next": None, "position": 0.0, "duration": 0.0, "wait_remaining": None}
 SHOW_COMMANDS = {"play", "pause", "play_pause", "stop", "next", "prev"}
 LEARN_TIMEOUT = 15

@@ -196,6 +196,7 @@ function viewShow() {
           </div>
           <div class="sh-status"><span id="sh-state" class="state"></span><span id="sh-block" class="block"></span><span id="sh-num" class="num"></span></div>
           <h1 id="sh-song" class="sh-title"></h1>
+          <p id="sh-note" class="sh-note" hidden></p>
           <div class="meter"><div id="sh-bar" class="meter-fill"></div></div>
           <div class="times"><span id="sh-pos"></span><span id="sh-rem" class="rem"></span></div>
           <div class="info">
@@ -299,6 +300,9 @@ function viewShow() {
     $('#sh-block').textContent = s.block || '';
     $('#sh-num').textContent = `${pad2(s.index + 1)} / ${pad2(s.count)}`;
     $('#sh-song').textContent = s.song || '—';
+    const note = $('#sh-note');  // lo que la banda preparó para esta canción, en letra chica
+    note.textContent = s.note || '';
+    note.hidden = !s.note;
     const pos = moving ? s.position : 0;
     $('#sh-bar').style.width = s.duration ? `${Math.min(100, 100 * pos / s.duration)}%` : '0';
     $('#sh-pos').textContent = mmss(pos);
@@ -430,7 +434,8 @@ function viewSetlist(slug) {
           <tbody>${sl.items.map((it, i) => `
             <tr data-i="${i}">
               <td class="n">${pad2(i + 1)}</td>
-              <td>${esc(songName(it.song))} <span class="dur">${mmss(songDur(it.song))}</span></td>
+              <td>${esc(songName(it.song))} <span class="dur">${mmss(songDur(it.song))}</span>
+                <input class="note" value="${esc(it.note || '')}" placeholder="Observación: se ve en el reproductor y en las hojas" aria-label="Observación"></td>
               <td><input class="blk" value="${esc(it.block || '')}" placeholder="—" aria-label="Bloque"></td>
               <td><div class="beh-cell"><select class="beh" aria-label="Al terminar">${behaviorOptions(it.behavior)}</select>
                 <span class="wait-box" ${it.behavior === 'wait' ? '' : 'hidden'}><input class="wait" type="number" min="1" step="1" value="${it.wait || 5}" aria-label="Segundos"> s</span></div></td>
@@ -491,6 +496,7 @@ function viewSetlist(slug) {
     const tr = e.target.closest('tr[data-i]');
     if (e.target.id === 'ed-name') sl.name = e.target.value;
     else if (tr && e.target.classList.contains('blk')) sl.items[+tr.dataset.i].block = e.target.value || null;
+    else if (tr && e.target.classList.contains('note')) sl.items[+tr.dataset.i].note = e.target.value;
     else if (tr && e.target.classList.contains('wait')) sl.items[+tr.dataset.i].wait = +e.target.value;
     else if (e.target.id === 'bt-beh') $('#bt-wait-box').hidden = e.target.value !== 'wait';
     renderDirty();
@@ -520,7 +526,8 @@ function viewSetlist(slug) {
     }
     if (b.id === 'ed-add-btn') {
       const last = items[items.length - 1];
-      items.push({song: $('#ed-add').value, behavior: info.default_behavior, wait: 0, block: last ? last.block : null});
+      items.push({song: $('#ed-add').value, behavior: info.default_behavior, wait: 0,
+        block: last ? last.block : null, note: ''});
       return render();
     }
     if (b.id === 'bt-apply') {
@@ -606,7 +613,8 @@ function viewPrint(slug) {
     return `<div class="sheet floor">${head()}
       <ol class="songs" style="font-size:${size}px">${lines().map(l => l.block !== undefined
         ? `<li class="blk">${esc(l.block)}</li>`
-        : `<li><span class="n">${pad2(l.i + 1)}</span><span class="t">${esc(songName(l.it))}</span></li>`).join('')}</ol>
+        : `<li><span class="n">${pad2(l.i + 1)}</span><span class="t">${esc(songName(l.it))}${
+          l.it.note ? `<small class="nt">${esc(l.it.note)}</small>` : ''}</span></li>`).join('')}</ol>
     </div>`;
   }
 
@@ -616,7 +624,7 @@ function viewPrint(slug) {
       <table><thead><tr><th>#</th><th>Canción</th><th>Bloque</th><th>Dura</th><th>Al terminar</th></tr></thead>
         <tbody>${sl.items.map((it, i) => `<tr>
           <td class="n">${pad2(i + 1)}</td>
-          <td><strong>${esc(songName(it))}</strong></td>
+          <td><strong>${esc(songName(it))}</strong>${it.note ? `<div class="nt">${esc(it.note)}</div>` : ''}</td>
           <td>${esc(it.block || '—')}</td>
           <td class="dur">${mmss(songDur(it))}</td>
           <td class="beh">${esc(describe(it))}</td></tr>`).join('')}</tbody></table>
@@ -629,7 +637,7 @@ function viewPrint(slug) {
     const total = sl.items.reduce((a, it) => a + songDur(it), 0);
     const rows = lines().map(l => l.block !== undefined
       ? `\n— ${l.block} —`
-      : `${pad2(l.i + 1)}. ${songName(l.it)} (${mmss(songDur(l.it))})`);
+      : `${pad2(l.i + 1)}. ${songName(l.it)} (${mmss(songDur(l.it))})${l.it.note ? `\n    · ${l.it.note}` : ''}`);
     return `${sl.name.toUpperCase()}\n${rows.join('\n')}\n\n${sl.items.length} canciones · ${mmss(total)}`.trim();
   }
 

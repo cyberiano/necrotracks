@@ -49,7 +49,8 @@ def _head(pdf, sl, count, total):
 
 
 def _floor(pdf, items, name, size):
-    """Número y nombre lo más grande que entre: la hoja se lee parado, desde arriba."""
+    """Número y nombre lo más grande que entre: la hoja se lee parado, desde arriba.
+    La observación va abajo, en letra chica: es para leerla de reojo, no de lejos."""
     block = None
     for i, it in enumerate(items):
         if it.get("block") != block:
@@ -60,14 +61,21 @@ def _floor(pdf, items, name, size):
                 pdf.set_text_color(*ROJO)
                 pdf.cell(0, size * 0.48, _t(block.upper()), new_x="LMARGIN", new_y="NEXT")
                 pdf.set_text_color(16, 16, 19)
-        pdf.set_font("Helvetica", "B", size)
+        note = (it.get("note") or "").strip()
+        borde = "" if note else "B"  # la línea va abajo de todo: si hay observación, después de ella
         alto = size * 0.72
         pdf.set_text_color(*GRIS)
         pdf.set_font("Helvetica", "", round(size * 0.62))
-        pdf.cell(size * 0.85, alto, f"{i + 1:02d}", border="B")
+        pdf.cell(size * 0.85, alto, f"{i + 1:02d}", border=borde)
         pdf.set_text_color(16, 16, 19)
         pdf.set_font("Helvetica", "B", size)
-        pdf.cell(0, alto, _t(name(it).upper()), border="B", new_x="LMARGIN", new_y="NEXT")
+        pdf.cell(0, alto, _t(name(it).upper()), border=borde, new_x="LMARGIN", new_y="NEXT")
+        if note:
+            pdf.set_font("Helvetica", "I", max(8, round(size * 0.34)))
+            pdf.set_text_color(*GRIS)
+            pdf.cell(size * 0.85, size * 0.42, "", new_x="RIGHT", new_y="TOP")
+            pdf.cell(0, size * 0.42, _t(note), border="B", new_x="LMARGIN", new_y="NEXT")
+            pdf.set_text_color(16, 16, 19)
 
 
 def _table(pdf, items, name, dur, behaviors):
@@ -79,17 +87,23 @@ def _table(pdf, items, name, dur, behaviors):
                  new_y="NEXT" if ancho == 0 else "TOP")
     pdf.set_text_color(16, 16, 19)
     for i, it in enumerate(items):
+        note = (it.get("note") or "").strip()
+        borde = "" if note else "B"  # con observación, la línea de abajo va después de ella
         pdf.set_font("Helvetica", "", 8)
         pdf.set_text_color(*GRIS)
-        pdf.cell(anchos[0], 8, f"{i + 1:02d}", border="B")
+        pdf.cell(anchos[0], 8, f"{i + 1:02d}", border=borde)
         pdf.set_text_color(16, 16, 19)
         pdf.set_font("Helvetica", "B", 11)
-        pdf.cell(anchos[1], 8, _t(name(it)), border="B")
+        pdf.cell(anchos[1], 8, _t(name(it)), border=borde)
         pdf.set_font("Helvetica", "", 10)
-        pdf.cell(anchos[2], 8, _t(it.get("block") or "-"), border="B")
-        pdf.cell(anchos[3], 8, mmss(dur(it)), border="B")
+        pdf.cell(anchos[2], 8, _t(it.get("block") or "-"), border=borde)
+        pdf.cell(anchos[3], 8, mmss(dur(it)), border=borde)
         pdf.set_text_color(*GRIS)
-        pdf.cell(0, 8, _t(_behavior(it, behaviors)), border="B", new_x="LMARGIN", new_y="NEXT")
+        pdf.cell(0, 8, _t(_behavior(it, behaviors)), border=borde, new_x="LMARGIN", new_y="NEXT")
+        if note:
+            pdf.set_font("Helvetica", "I", 9)
+            pdf.cell(anchos[0], 6, "", new_x="RIGHT", new_y="TOP")
+            pdf.cell(0, 6, _t(note), border="B", new_x="LMARGIN", new_y="NEXT")
         pdf.set_text_color(16, 16, 19)
 
 

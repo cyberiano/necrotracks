@@ -58,6 +58,7 @@ class Show:
                 "song": song["name"] if song else None,
                 "song_slug": item["song"] if item else None,
                 "block": item["block"] if item else None,
+                "note": (item.get("note") or None) if item else None,
                 "behavior": item["behavior"] if item else None,
                 "next": nxt_song["name"] if nxt_song else None,
                 "position": self.player.position / self.samplerate if sounding else 0.0,

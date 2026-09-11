@@ -28,7 +28,7 @@ def test_esperar_requiere_segundos(songs):
     with pytest.raises(ValueError):
         setlists.set_item(sl, 0, "wait", 0)
     setlists.set_item(sl, 0, "wait", 5)
-    assert sl["items"][0] == {"song": "uno", "behavior": "wait", "wait": 5.0, "block": None}
+    assert sl["items"][0] == {"song": "uno", "behavior": "wait", "wait": 5.0, "block": None, "note": ""}
 
 
 def test_bloques_con_default_editable(songs):
@@ -37,7 +37,7 @@ def test_bloques_con_default_editable(songs):
     assert [i["block"] for i in sl["items"]] == ["Bloque 1", "Bloque 1", None]
     assert [i["behavior"] for i in sl["items"]] == ["auto_next", "auto_next", "arm_next"]
     setlists.set_item(sl, 1, "stop")
-    assert sl["items"][1] == {"song": "dos", "behavior": "stop", "wait": 0.0, "block": "Bloque 1"}
+    assert sl["items"][1] == {"song": "dos", "behavior": "stop", "wait": 0.0, "block": "Bloque 1", "note": ""}
 
 
 def test_mover(songs):

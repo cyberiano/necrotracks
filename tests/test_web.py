@@ -31,7 +31,7 @@ def test_biblioteca_y_set_lists(client, tmp_path):
     assert r.status_code == 200
     body = r.json()
     assert body["slug"] == "ensayo" and body["name"] == "Ensayo del viernes"
-    assert body["items"] == [{"song": "uno", "behavior": "wait", "wait": 5.0, "block": "Bloque 1"}]
+    assert body["items"] == [{"song": "uno", "behavior": "wait", "wait": 5.0, "block": "Bloque 1", "note": ""}]
     assert body["problems"] == [] and body["songs"]["uno"]["name"] == "Uno"
 
     assert client.put("/api/setlists/ensayo", json={"name": "x", "items": [{"song": "nada"}]}).status_code == 400
@@ -79,6 +79,23 @@ def test_setlist_en_pdf(client, tmp_path):
         assert r.content.startswith(b"%PDF") and len(r.content) > 800
     assert client.get("/api/setlists/ensayo-del-viernes/pdf?mode=volar").status_code == 400
     assert client.get("/api/setlists/nada/pdf").status_code == 404
+
+
+def test_observaciones_por_cancion(client, tmp_path):
+    library.import_song(write(tmp_path / "Uno.wav", tone(220)), name="Uno")
+    client.post("/api/setlists", json={"name": "Sabado"})
+    r = client.put("/api/setlists/sabado", json={"name": "Sabado", "items": [
+        {"song": "uno", "note": "  Arranca Juan solo,\n  entramos en el segundo riff  "}]})
+    assert r.status_code == 200
+    assert r.json()["items"][0]["note"] == "Arranca Juan solo, entramos en el segundo riff"  # una sola línea
+    assert client.get("/api/setlists/sabado").json()["items"][0]["note"] == "Arranca Juan solo, entramos en el segundo riff"
+
+    largo = client.put("/api/setlists/sabado", json={"name": "Sabado", "items": [{"song": "uno", "note": "x" * 300}]})
+    assert len(largo.json()["items"][0]["note"]) == setlists.NOTE_MAX  # es una línea, no un párrafo
+    assert client.get("/api/setlists/sabado/pdf?mode=tecnica").content.startswith(b"%PDF")
+
+    sin = client.put("/api/setlists/sabado", json={"name": "Sabado", "items": [{"song": "uno"}]})
+    assert sin.json()["items"][0]["note"] == ""  # sin observación: sigue andando igual
 
 
 def test_import_por_la_web(client, tmp_path):

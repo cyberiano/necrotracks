@@ -248,6 +248,10 @@ Degrada bien: si se corta el WS, muestra "desconectado" y no bloquea nada.
   sin querer en el escenario deja la pantalla corrida. Y **instalada en el inicio del iPhone no hay forma de
   recargar** (no hay barra ni tirar hacia abajo): va un botón en la barra, más un refresco automático al volver
   a la app (por ejemplo, después de subir una canción desde la Mac).
+- **Observaciones por canción** (2026-09-11, pedido de Cristian): lo que la banda prepara para el show
+  ("arranca Juan solo", "sample al final"). Van **en la set list, no en la canción de la biblioteca**
+  (decisión de Cristian: cambian de show en show), una línea de hasta 200 caracteres, y se ven en letra
+  chica en el reproductor, en la hoja del piso, en la técnica, en el texto para mensaje y en el PDF.
 - **Set list imprimible** (2026-09-11, pedido de Cristian): botón Imprimir en el editor → `#imprimir/SLUG`, con dos
   hojas: **"para el piso"** (número y nombre lo más grande que entre —el tamaño baja según cuántas canciones
   haya—, con los bloques marcados) y **"técnica"** (duración, bloque, qué hace al terminar y total). **El PDF lo

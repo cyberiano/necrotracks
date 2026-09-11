@@ -50,6 +50,7 @@ class Item(BaseModel):
     behavior: str = setlists.DEFAULT_BEHAVIOR
     wait: float = 0
     block: str | None = None
+    note: str = ""
 
 
 class SetlistIn(BaseModel):
@@ -635,7 +636,8 @@ def put_setlist(slug: str, body: SetlistIn):
     if missing:
         raise HTTPException(400, f"No están en la biblioteca: {', '.join(missing)}")
     try:
-        items = [setlists.make_item(i.song, i.behavior, i.wait, (i.block or "").strip() or None) for i in body.items]
+        items = [setlists.make_item(i.song, i.behavior, i.wait, (i.block or "").strip() or None, i.note)
+                 for i in body.items]
     except ValueError as e:
         raise HTTPException(400, str(e)) from None
     sl.update(name=name, items=items)  # el slug no cambia al renombrar

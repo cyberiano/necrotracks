@@ -169,6 +169,8 @@ td.acts .btn + .btn { margin-left: 4px; }
 .state.waiting::before { background: var(--warn); animation: pulse .6s ease-in-out infinite; }
 .block { font: 700 15px/1 var(--display); letter-spacing: .14em; text-transform: uppercase; color: var(--accent-hi); }
 .num { margin-left: auto; font: 13px var(--mono); color: var(--faint); }
+.sh-note { margin: -14px 0 20px; font-size: 15px; line-height: 1.4; color: var(--warn); }
+.sh-note::before { content: ""; display: inline-block; width: 3px; height: .95em; margin: 0 9px -2px 0; background: var(--warn); }
 .sh-title { margin: 18px 0 22px; font: 700 clamp(44px, 9vw, 80px)/.92 var(--display); letter-spacing: .01em;
   text-transform: uppercase; overflow-wrap: anywhere; }
 .meter { position: relative; height: 6px; background: var(--line); }
@@ -221,6 +223,7 @@ td.acts .btn + .btn { margin-left: 4px; }
 .title-input:hover { border-bottom-color: var(--line-2); }
 .title-input:focus { border-bottom-color: var(--accent); }
 .items input.blk { width: 150px; }
+.items input.note { display: block; width: 100%; max-width: 420px; margin-top: 6px; padding: 6px 9px; font-size: 14px; }
 .items input.wait { width: 64px; }
 .items select { max-width: 280px; }
 .beh-cell { display: flex; align-items: center; gap: 8px; }
@@ -289,6 +292,10 @@ input[type=checkbox]:disabled { opacity: .35; cursor: default; }
 .sheet .t { flex: 1; font: 700 1em/1.06 var(--display); letter-spacing: .01em; text-transform: uppercase;
   overflow-wrap: anywhere; }
 .sheet .d { flex: none; font: .34em var(--mono); color: #55555e; }
+/* La observación: letra chica, en em para que acompañe el tamaño de la hoja del piso */
+.sheet .t .nt { display: block; margin-top: .1em; font: 400 .3em/1.35 var(--ui); letter-spacing: 0;
+  text-transform: none; color: #55555e; }
+.sheet td .nt { margin-top: 3px; font-size: 13px; color: #55555e; }
 .floor .songs { font-size: 38px; }  /* lo pisa el JS según cuántas canciones entren en la hoja */
 .sheet table { margin-top: 18px; }
 .sheet th { color: #55555e; border-bottom: 2px solid #101013; }
@@ -363,6 +370,11 @@ input[type=checkbox]:disabled { opacity: .35; cursor: default; }
   .grid2 { grid-template-columns: 1fr; }
   .info-row .label { width: 92px; }
 }
+/* En la compu, la columna de la canción se ensancha: ahí adentro se escribe la observación */
+@media (min-width: 941px) {
+  .items td:nth-child(2) { min-width: 320px; }
+}
+
 /* El editor de set list no entra en columnas por debajo de ~940 px: filas en bloques */
 @media (max-width: 940px) {
   .items thead { display: none; }

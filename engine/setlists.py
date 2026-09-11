@@ -1,10 +1,15 @@
 """Set lists: orden de canciones, bloques y comportamiento de cada una.
 
 Se guardan en setlists/<slug>.json:
-    {"name": ..., "slug": ..., "items": [{"song": slug, "behavior": ..., "wait": s, "block": nombre|null}]}
+    {"name": ..., "slug": ..., "items": [{"song": slug, "behavior": ..., "wait": s, "block": nombre|null,
+                                          "note": "observación"}]}
 
 El bloque es solo una etiqueta para la UI: agrupa canciones y, al asignarlo, puede aplicarles
 un comportamiento por defecto que después se cambia canción por canción.
+
+La observación es lo que la banda prepara para ese show ("arranca Juan solo", "sample al final"):
+va pegada a la canción **dentro de esta set list**, no a la canción de la biblioteca, porque cambia
+de show en show. Se ve en letra chica en el reproductor y en las dos hojas impresas.
 """
 import soundfile as sf
 
@@ -18,6 +23,7 @@ BEHAVIORS = {
     "repeat": "Repetir la canción",
 }
 DEFAULT_BEHAVIOR = "arm_next"
+NOTE_MAX = 200  # la observación es una línea de letra chica, no un párrafo
 
 
 def describe(item):
@@ -33,9 +39,11 @@ def _validate(behavior, wait):
         raise ValueError("'wait' necesita una cantidad de segundos mayor que 0")
 
 
-def make_item(song, behavior=DEFAULT_BEHAVIOR, wait=0, block=None):
+def make_item(song, behavior=DEFAULT_BEHAVIOR, wait=0, block=None, note=""):
     _validate(behavior, wait)
-    return {"song": song, "behavior": behavior, "wait": float(wait), "block": block}
+    # Una línea: en el piso, a la distancia, un párrafo no se lee (y en la hoja no entra)
+    note = " ".join(str(note or "").split())[:NOTE_MAX]
+    return {"song": song, "behavior": behavior, "wait": float(wait), "block": block, "note": note}
 
 
 def _path(slug):
