@@ -233,7 +233,8 @@ Reglas que salen de acá:
 3. Buffer grande, hilo de audio con prioridad de tiempo real.
 4. Detectar el cuelgue (errores del device / dmesg) y mostrar "Reconectar iRig" en OLED y web:
    la Pi no puede revivirlo sola.
-5. ~~Pendiente: engine con buffer de 20 s bajo la misma carga~~ → **limpio**: 90 s, escritura
-   fuerte a la SD durante 40 s, load hasta 2.05, `xruns=0 starved=0`, sin errores USB.
-   Ojo: se cambió el cable USB del iRig justo antes (21:31). Sin separar todavía cuánto aportó
-   el cable y cuánto el buffer.
+5. Engine con buffer de 20 s bajo la misma carga (cable USB nuevo): los números dan limpio
+   (`xruns=0 starved=0`, sin errores USB, load hasta 2.05), **pero el vúmetro fue a rojo**
+   (todas las luces con un tono de −12 dB) → el iRig sacó basura igual.
+   **Ni los contadores del engine ni dmesg detectan el cuelgue.** El único indicador confiable
+   hoy es el vúmetro. El cable nuevo no lo resolvió.
