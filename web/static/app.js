@@ -547,10 +547,10 @@ function viewLibrary() {
       <h1 class="title">Importar canción</h1>
       <form id="imp" class="panel">
         <div class="pick">
-          <label class="btn">${ic('upload')}Archivos<input type="file" id="imp-files" class="vh" multiple accept=".wav,.wave,.flac,.aif,.aiff,.mp3,.ogg,.zip,.mid,.midi"></label>
+          <label class="btn">${ic('upload')}Archivos<input type="file" id="imp-files" class="vh" multiple accept=".wav,.wave,.flac,.aif,.aiff,.mp3,.ogg,.zip,.mid,.midi,.mp4,.mov,.m4v"></label>
           <label class="btn ghost">${ic('folder')}Carpeta<input type="file" id="imp-dir" class="vh" webkitdirectory></label>
         </div>
-        <div id="imp-picked" class="picked">WAV, FLAC, AIFF, MP3, ZIP o MIDI. Una canción por vez.</div>
+        <div id="imp-picked" class="picked">WAV, FLAC, AIFF, MP3, MP4, ZIP o MIDI. Una canción por vez.</div>
         <div class="grid2">
           <label class="field"><span>Nombre de la canción</span><input id="imp-name" placeholder="El del archivo o la carpeta"></label>
           <label class="field"><span>Si es un único archivo estéreo</span>
@@ -583,7 +583,7 @@ function viewLibrary() {
     const mb = files.reduce((a, f) => a + f.size, 0) / 1048576;
     $('#imp-picked').innerHTML = files.length
       ? `<strong>${plural(files.length, 'archivo', 'archivos')}</strong> · ${mb.toFixed(1)} MB · ${esc(files.slice(0, 4).map(f => f.name).join(', '))}${files.length > 4 ? '…' : ''}`
-      : 'WAV, FLAC, AIFF, MP3, ZIP o MIDI. Una canción por vez.';
+      : 'WAV, FLAC, AIFF, MP3, MP4, ZIP o MIDI. Una canción por vez.';
   }
 
   async function load() {
@@ -592,10 +592,11 @@ function viewLibrary() {
     $('#lib-count').textContent = pad2(songs.length);
     const yes = b => b ? `<span class="yes">${ic('check')}</span>` : '<span class="no">—</span>';
     $('#lib').innerHTML = songs.length ? `<div class="table-wrap"><table class="songs">
-      <thead><tr><th>Canción</th><th>Duración</th><th>Pista</th><th>Click</th><th>Guía</th><th>MIDI</th><th>En set lists</th><th></th></tr></thead>
+      <thead><tr><th>Canción</th><th>Duración</th><th>Pista</th><th>Click</th><th>Guía</th><th>MIDI</th><th>Video</th><th>En set lists</th><th></th></tr></thead>
       <tbody>${songs.map(s => `<tr>
         <td><strong>${esc(s.name)}</strong>${s.warnings.map(w => `<div class="warn">${ic('alert')}<span>${esc(w)}</span></div>`).join('')}</td>
         <td class="dur">${mmss(s.duration)}</td><td>${esc(s.foh || '—')}</td><td>${yes(s.click)}</td><td>${yes(s.guia)}</td><td>${yes(s.midi)}</td>
+        <td>${s.video ? `<span class="yes">${s.video.height}p</span>` : '<span class="no">—</span>'}</td>
         <td class="small">${s.used_in.map(esc).join(', ') || '<span class="no">—</span>'}</td>
         <td class="acts"><button data-del="${esc(s.slug)}" data-name="${esc(s.name)}" class="btn icon sm danger" title="${s.used_in.length ? 'Está en una set list' : 'Borrar de la biblioteca'}" ${s.used_in.length ? 'disabled' : ''}>${ic('trash')}</button></td>
       </tr>`).join('')}</tbody></table></div>` : '<p class="muted">La biblioteca está vacía.</p>';

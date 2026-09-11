@@ -12,6 +12,8 @@ log "Paquetes"
 apt-get update -qq
 DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
   git python3-venv python3-rtmidi python3-lgpio libportaudio2 alsa-utils i2c-tools
+# Video por HDMI (mpv) e import de MP4 (ffmpeg). Sin los recomendados, que suman cientos de paquetes.
+DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends mpv ffmpeg
 
 # Un dtparam de la base tiene que ir ANTES del primer dtoverlay: si va después,
 # el firmware lo aplica a ese overlay y lo ignora. Mueve la línea si está mal ubicada.

@@ -23,6 +23,7 @@ import asyncio
 import json
 import logging
 import os
+import shutil
 import sys
 
 from . import controls, library, profiles, setlists, store
@@ -32,7 +33,8 @@ log = logging.getLogger("necrotracks.engine")
 
 DEFAULT_CONFIG = {"profile": profiles.DEFAULT, "fallback": profiles.FALLBACK, "setlist": None,
                   "midi": {"port": controls.DEFAULT_PORT, "map": controls.DEFAULT_MAP}}
-EMPTY_STATE = {"setlist": None, "slug": None, "state": "stopped", "index": 0, "count": 0, "song": None, "block": None,
+EMPTY_STATE = {"setlist": None, "slug": None, "state": "stopped", "index": 0, "count": 0, "song": None,
+               "song_slug": None, "block": None,
                "behavior": None, "next": None, "position": 0.0, "duration": 0.0, "wait_remaining": None}
 SHOW_COMMANDS = {"play", "pause", "play_pause", "stop", "next", "prev"}
 LEARN_TIMEOUT = 15
@@ -309,6 +311,13 @@ def main():
     engine = Engine(player, config, output)
     engine.midi_port = config["midi"]["port"]
     engine.restart = lambda: os._exit(0)  # Restart=always: systemd lo levanta con la salida nueva
+    if config.get("video", True) and shutil.which("mpv"):
+        from .video import Mpv, Video
+
+        # El logo va en los datos (no en el repo): sin él, la pantalla queda en negro entre videos.
+        delay = player.stream.latency + config.get("video_offset", 0.0)
+        Video(engine.state, library.video_path, store.DATA / "video-logo.png", delay=delay,
+              mpv=Mpv(store.RUN / "mpv.sock")).start()
     if config["setlist"]:
         try:
             engine.load(config["setlist"])

@@ -11,8 +11,10 @@ ROLES), o un único archivo de audio. Un único archivo estéreo es ambiguo y ha
 es: "click-pista" (L = click, R = pista mono, el formato simple de la banda) o "foh" (pista
 estéreo). Adivinarlo mal mandaría el click al PA.
 """
+import json
 import re
 import shutil
+import subprocess
 import tempfile
 import unicodedata
 import zipfile
@@ -29,6 +31,7 @@ RENDER_CHANNELS = ("foh_l", "foh_r", "click", "guia")
 BLOCK = SAMPLERATE  # 1 s por bloque al renderizar
 AUDIO_EXT = {".wav", ".wave", ".flac", ".aif", ".aiff", ".mp3", ".ogg"}
 MIDI_EXT = {".mid", ".midi"}
+VIDEO_EXT = {".mp4", ".mov", ".m4v"}
 LAYOUTS = {"click-pista": "click_pista", "foh": "foh"}
 
 # nombre de archivo (sin extensión, normalizado) → rol
@@ -44,7 +47,8 @@ ROLES = {
 CONVENTIONS = (
     "Nombres reconocidos (sin importar mayúsculas ni extensión): foh o pista (mono o estéreo), "
     "foh_L + foh_R (mono), click, guia, click-pista (estéreo: L = click, R = pista) y un .mid "
-    "opcional. Un único archivo suelto se importa indicando si es click-pista o foh."
+    "opcional. Un único archivo suelto se importa indicando si es click-pista o foh. Un video (MP4 o MOV, "
+    "H.264 hasta 1080p a 30 fps) se muestra por HDMI; si viene sin otro audio, se usa el suyo."
 )
 
 
@@ -54,6 +58,11 @@ class ImportProblem(Exception):
 
 def render_path(slug):
     return store.library_dir() / slug / "render.wav"
+
+
+def video_path(slug):
+    path = store.library_dir() / slug / "video.mp4"
+    return path if path.exists() else None
 
 
 def get_song(slug):
@@ -124,16 +133,29 @@ def _members(src):
 def _build(src, dest, name, slug, layout, rate, guard=False):
     stems = dest / "stems"
     stems.mkdir(parents=True)
-    audio, midi = [], []
+    audio, midi, videos, warnings = [], [], [], []
     for fname, opener in _members(src):
         ext = Path(fname).suffix.lower()
-        if ext not in AUDIO_EXT | MIDI_EXT:
+        if ext not in AUDIO_EXT | MIDI_EXT | VIDEO_EXT:
             continue
-        if (stems / fname).exists():
-            raise ImportProblem(f"Archivo repetido: {fname}")
-        with opener() as fi, open(stems / fname, "wb") as fo:
+        # El video va aparte, tal cual (se muestra por HDMI); stems/ guarda los originales de audio y MIDI.
+        target = dest / "video.mp4" if ext in VIDEO_EXT else stems / fname
+        if target.exists():
+            raise ImportProblem("Hay más de un video" if ext in VIDEO_EXT else f"Archivo repetido: {fname}")
+        with opener() as fi, open(target, "wb") as fo:
             store.copy_stream(fi, fo, rate, guard=guard)
-        (audio if ext in AUDIO_EXT else midi).append(fname)
+        (videos if ext in VIDEO_EXT else audio if ext in AUDIO_EXT else midi).append(fname)
+    video = None
+    if videos:
+        video, video_warnings = _probe_video(dest / "video.mp4", videos[0])
+        warnings += video_warnings
+        if not audio:  # sin otro audio se usa el del video, con las mismas reglas que un archivo suelto
+            wav = f"{Path(videos[0]).stem}.wav"
+            with tempfile.TemporaryDirectory(prefix="necrotracks-") as tmp:  # en RAM: nada de escribir de golpe en la SD
+                _extract_audio(dest / "video.mp4", Path(tmp) / wav, videos[0])
+                with open(Path(tmp) / wav, "rb") as fi, open(stems / wav, "wb") as fo:
+                    store.copy_stream(fi, fo, rate, guard=guard)
+            audio.append(wav)
     if not audio:
         raise ImportProblem(f"No hay archivos de audio. {CONVENTIONS}")
     if len(midi) > 1:
@@ -143,8 +165,7 @@ def _build(src, dest, name, slug, layout, rate, guard=False):
     infos = {role: sf.info(str(stems / f)) for role, f in roles.items()}
     _validate(roles, infos)
 
-    warnings = []
-    durations = {role: i.frames / i.samplerate for role, i in infos.items()}
+    durations ={role: i.frames / i.samplerate for role, i in infos.items()}
     if max(durations.values()) - min(durations.values()) > 0.5:
         detail = ", ".join(f"{roles[r]} {d:.1f} s" for r, d in durations.items())
         warnings.append(f"Los archivos no tienen la misma duración ({detail}): se completó con silencio")
@@ -176,6 +197,7 @@ def _build(src, dest, name, slug, layout, rate, guard=False):
         "click": bool(has & {"click", "click_pista"}),
         "guia": "guia" in has,
         "midi": bool(midi),
+        "video": video,
         "layout": "click-pista" if "click_pista" in has else "stems",
         "sources": roles,
         "original_samplerate": rates,
@@ -185,6 +207,44 @@ def _build(src, dest, name, slug, layout, rate, guard=False):
     }
     store.write_json(dest / "song.json", song)
     return song
+
+
+def _run(args, what):
+    try:
+        r = subprocess.run(args, capture_output=True, text=True)
+    except FileNotFoundError:
+        raise ImportProblem(f"Falta {args[0]} para importar video (bin/bootstrap.sh lo instala)") from None
+    if r.returncode:
+        raise ImportProblem(f"{what}: {r.stderr.strip()[-300:]}")
+    return r.stdout
+
+
+def _probe_video(path, fname):
+    """Datos del video y avisos si la Pi no lo va a poder mostrar bien (decodifica por hardware
+    solo H.264, hasta 1080p30)."""
+    out = json.loads(_run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
+                           "stream=codec_name,width,height,avg_frame_rate", "-of", "json", str(path)],
+                          f"No se pudo leer {fname}"))
+    if not out.get("streams"):
+        raise ImportProblem(f"{fname} no tiene video")
+    s = out["streams"][0]
+    num, den = (s.get("avg_frame_rate") or "0/1").split("/")
+    fps = round(int(num) / int(den), 2) if int(den) else 0.0
+    info = {"file": fname, "codec": s["codec_name"], "width": s["width"], "height": s["height"], "fps": fps}
+    warnings = []
+    if info["codec"] != "h264":
+        warnings.append(f"El video es {info['codec']}: la Pi decodifica por hardware solo H.264. "
+                        "Exportalo en H.264 o se va a ver trabado.")
+    if info["width"] > 1920 or info["height"] > 1080:
+        warnings.append(f"El video es de {info['width']}×{info['height']}: la Pi no pasa de 1080p. Exportalo en 1080p o 720p.")
+    if fps > 30.5:
+        warnings.append(f"El video tiene {fps:g} cuadros por segundo: exportalo a 30 o menos.")
+    return info, warnings
+
+
+def _extract_audio(video, dst, fname):
+    _run(["ffmpeg", "-v", "error", "-nostdin", "-y", "-i", str(video), "-vn", "-map", "0:a:0",
+          "-c:a", "pcm_s24le", "-ar", str(SAMPLERATE), str(dst)], f"No se pudo sacar el audio de {fname} (¿tiene audio?)")
 
 
 def _roles(stems, audio, layout):

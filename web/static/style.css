@@ -321,9 +321,9 @@ details.tool summary { cursor: pointer; font: 700 14px/1 var(--display); letter-
   .songs tr { grid-template-columns: minmax(0, 1fr) auto auto; grid-template-areas: "name dur del" "sets sets sets"; align-items: center; }
   .songs td:nth-child(1) { grid-area: name; }
   .songs td:nth-child(2) { grid-area: dur; }
-  .songs td:nth-child(7) { grid-area: sets; color: var(--muted); }
-  .songs td:nth-child(8) { grid-area: del; }
-  .songs td:nth-child(3), .songs td:nth-child(4), .songs td:nth-child(5), .songs td:nth-child(6) { display: none; }
+  .songs td:nth-child(8) { grid-area: sets; color: var(--muted); }
+  .songs td:nth-child(9) { grid-area: del; }
+  .songs td:nth-child(n+3):nth-child(-n+7) { display: none; }
   .controls tr { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "name acts" "keys keys"; align-items: center; }
   .controls td:nth-child(1) { grid-area: name; }
   .controls td:nth-child(2) { grid-area: keys; font-size: 14px; color: var(--muted); }
