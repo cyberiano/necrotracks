@@ -4,7 +4,7 @@
 set -euo pipefail
 FAST=0
 [ "${1:-}" = "--fast" ] && { FAST=1; shift; }
-HOST="${1:-${NECROTRACKS_HOST:-necrotracks@192.168.1.228}}"
+HOST="${1:-${NECROTRACKS_HOST:-necrotracks@necrotracks.local}}"
 cd "$(dirname "$0")/.."
 
 git fetch -q origin
