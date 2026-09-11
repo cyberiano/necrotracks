@@ -317,7 +317,7 @@ def main():
         # El logo va en los datos (no en el repo): sin él, la pantalla queda en negro entre videos.
         delay = player.stream.latency + config.get("video_offset", 0.0)
         Video(engine.state, library.video_path, store.DATA / "video-logo.png", delay=delay,
-              mpv=Mpv(store.RUN / "mpv.sock")).start()
+              mpv=Mpv(store.RUN / "mpv.sock"), cache_dir=store.RUN).start()
     if config["setlist"]:
         try:
             engine.load(config["setlist"])

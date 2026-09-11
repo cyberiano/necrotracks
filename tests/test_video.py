@@ -59,7 +59,8 @@ def test_video_sigue_al_audio(tmp_path):
     v, mpv, clock, logo = make(tmp_path)
     v.step(st("stopped"))
     v.step(st("playing", pos=0.5))
-    assert mpv.cmds[-1] == ("loadfile", "/v/uno.mp4", "replace", -1, "start=0.400,video-zoom=0,pause=no")
+    # posición 0,5 − latencia 0,1 + 0,15 de adelanto por lo que tarda mpv en arrancar
+    assert mpv.cmds[-1] == ("loadfile", "/v/uno.mp4", "replace", -1, "start=0.550,video-zoom=0,pause=no")
     v.step(st("paused", pos=0.8))
     assert mpv.cmds[-1] == ("set_property", "pause", True)
     v.step(st("playing", pos=0.8))
@@ -77,9 +78,14 @@ def test_sincronia(tmp_path):
     v.step(st("playing", pos=10.2))
     assert not [c for c in mpv.cmds[n:] if c[0] != "get_property"]
     clock.t += 1.1
-    mpv.props["time-pos"] = 20.1 + 0.1  # 100 ms adelantado: frena un poco
+    mpv.props["time-pos"] = 20.1 + 0.1  # 100 ms adelantado: frena un poco (ganancia 0,5, tope 3 %)
     v.step(st("playing", pos=20.2))
-    assert mpv.cmds[-1] == ("set_property", "speed", 0.95)
+    assert mpv.cmds[-1] == ("set_property", "speed", 0.97)
+    clock.t += 1.1
+    mpv.props["time-pos"] = 22.1 + 0.05  # entre 30 y 80 ms: no toca nada (sin ida y vuelta)
+    n = len(mpv.cmds)
+    v.step(st("playing", pos=22.2))
+    assert not [c for c in mpv.cmds[n:] if c[0] != "get_property"]
     clock.t += 1.1
     mpv.props["time-pos"] = 35.0  # muy lejos (p. ej. repeat): salta
     v.step(st("playing", pos=30.2))
@@ -91,6 +97,19 @@ def test_sin_logo_queda_negro(tmp_path):
     v = Video(None, lambda s: None, tmp_path / "no-existe.png", mpv=mpv)
     v.step(st("stopped"))
     assert mpv.cmds == [("stop",)]
+
+
+@needs_ffmpeg
+def test_logo_aplanado_sobre_negro(tmp_path):
+    from engine.video import flatten
+
+    logo = tmp_path / "logo.png"
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "color=c=white@0.0:s=40x20,format=rgba",
+                    "-frames:v", "1", str(logo)], check=True)
+    out = flatten(logo, tmp_path / "plano.png")
+    corner = subprocess.run(["ffmpeg", "-v", "error", "-i", str(out), "-vf", "crop=1:1:0:0", "-f", "rawvideo",
+                             "-pix_fmt", "rgba", "-"], check=True, capture_output=True).stdout
+    assert out.name == "plano.png" and list(corner) == [0, 0, 0, 255]  # negro opaco, no transparente
 
 
 def make_mp4(path, seconds=1):

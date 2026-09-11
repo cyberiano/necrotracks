@@ -33,9 +33,25 @@ TOLERANCE = 0.08  # desfase para empezar a corregir con la velocidad…
 SETTLED = 0.03  # …y para volver a velocidad normal
 GAIN = 0.5
 MAX_SPEED_ADJUST = 0.03
+LOAD_LEAD = 0.15  # mpv tarda ~150 ms en cargar y arrancar: el video arranca un poco adelante
 SYNC_EVERY = 1.0
 STEP = 0.25
 RETRY = 10  # segundos entre intentos de levantar mpv (p. ej. sin pantalla conectada)
+
+
+def flatten(logo, out):
+    """El logo aplanado sobre negro: así no depende de cómo mpv pinta lo transparente (y una captura
+    del HDMI lo puede confirmar). Si ffmpeg falla, queda el original."""
+    try:
+        size = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height",
+                               "-of", "csv=p=0:s=x", str(logo)], check=True, capture_output=True, text=True, timeout=30)
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(logo), "-filter_complex",
+                        f"color=c=black:s={size.stdout.strip()}[bg];[bg][0:v]overlay=shortest=1,format=rgb24",
+                        "-frames:v", "1", str(out)], check=True, capture_output=True, timeout=30)
+        return Path(out)
+    except (OSError, subprocess.SubprocessError) as e:
+        log.warning("video: no se pudo aplanar el logo (%s): va el original", e)
+        return Path(logo)
 
 
 class Mpv:
@@ -73,10 +89,11 @@ class Mpv:
 
 
 class Video:
-    def __init__(self, get_state, video_for, logo, delay=0.0, mpv=None, clock=time.monotonic):
+    def __init__(self, get_state, video_for, logo, delay=0.0, mpv=None, clock=time.monotonic, cache_dir=None):
         self.get_state = get_state  # → estado del engine (el mismo que ve la web)
         self.video_for = video_for  # slug → ruta del video, o None
         self.logo = Path(logo)
+        self.cache_dir = cache_dir  # dónde dejar el logo aplanado (RAM); None = usar el original
         self.delay = delay  # latencia de la salida de audio: lo que suena va atrasado respecto de position
         self.mpv = mpv
         self.clock = clock
@@ -89,6 +106,8 @@ class Video:
         threading.Thread(target=self._run, daemon=True, name="video").start()
 
     def _run(self):
+        if self.cache_dir and self.logo.exists():
+            self.logo = flatten(self.logo, Path(self.cache_dir) / "video-logo-plano.png")
         warned = False
         while True:
             if not self.mpv.alive():
@@ -129,8 +148,9 @@ class Video:
         paused = s["state"] == "paused"
         if want != self.loaded:
             if want:
+                start = target if paused else target + LOAD_LEAD
                 self.mpv.command("loadfile", str(want), "replace", -1,
-                                 f"start={target:.3f},video-zoom=0,pause={'yes' if paused else 'no'}")
+                                 f"start={start:.3f},video-zoom=0,pause={'yes' if paused else 'no'}")
                 self.paused = paused
             elif self.logo.exists():
                 self.mpv.command("loadfile", str(self.logo), "replace", -1, f"video-zoom={LOGO_ZOOM},pause=no")
