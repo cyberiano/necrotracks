@@ -290,6 +290,22 @@ real de la banda ("There is a Place", H.264 720p30, 7,4 Mbps, AAC 44,1 kHz, 4:30
   video queda tapado. En la Pi va `--drm-draw-plane=overlay --drm-drmprime-video-plane=primary` (el video
   en la primaria, lo que dibuja mpv arriba), y con un video cargado el fondo de arriba es transparente
   (`background-color=#00000000`, solo para ese archivo). Así se ve (confirmado por Cristian, ~11–20 % CPU).
+- **Video congelado en el primer cuadro**: con la CMA de 256 MB quedaban ~60 MB para mpv y, después de un
+  video, 1–5 MB libres: el decodificador no conseguía buffers. El bootstrap sube a **`cma-384`**: con el logo
+  quedan ~260 MB libres. Mientras suena, la CMA libre baja (la usa la caché de archivos) y vuelve sola
+  (medido: bajó a 21 MB y volvió a 139 MB). Audio y video sincronizados: ≤0,1 s en 214 s de canción.
+- **Play + pausa fantasma** (dos bugs, arreglados): la web sumaba escuchadores a `#view` en cada vista, y
+  después de ir y volver un toque mandaba `play_pause` dos veces; y el Player perdía una pausa que llegaba
+  mientras se llenaba el buffer (el show quedaba "en pausa" con el audio sonando). El transporte de la web
+  además ignora un segundo toque del mismo botón dentro de 300 ms.
+- **Proporción estirada**: el monitor de Cristian está detrás de un adaptador (EDID "TS35505", 30×23 cm)
+  que pide 1024x768; la Pi le hacía caso y el monitor, ancho, lo estiraba. Resolución automática: la que
+  pide la pantalla, salvo 4:3/5:4 con un 16:9 disponible (tope 1080p, sin entrelazado); se elige a mano en
+  Ajustes → Pantalla HDMI y cambiarla reinicia solo mpv (no el engine ni el iRig). **No usar
+  `--drm-draw-surface-size`**: con la capa de mpv más chica que la pantalla, el video queda tapado.
+  Pendiente: que Cristian confirme el video en 1920x1080 con la proporción bien.
+- Ojo con reiniciar el engine: al abrir el iRig con la CMA casi agotada, el USB lo perdió
+  (`usb_set_interface failed (-19)`) y reapareció solo. Con `cma-384` no se repitió.
 **Falta la prueba que decide**: 30 min con el engine sonando por el iRig y el video, con Cristian mirando
 el vúmetro (y el proyector: que el logo se vea bien y el video vaya con el click). Si traba, Pi 4.
 
