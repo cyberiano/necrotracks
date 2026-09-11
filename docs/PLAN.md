@@ -205,6 +205,12 @@ Degrada bien: si se corta el WS, muestra "desconectado" y no bloquea nada.
   `/tmp`: es RAM (450 MB). Borrar canciones solo si no están en ninguna set list.
 - Nada se sube, importa ni borra mientras suena, y **si arranca la reproducción a mitad de un import,
   se corta** (`store.Throttle(guard=True)`); la versión anterior de la canción queda intacta.
+- **Identidad (2026-09-11)**: emblema de Necrópolis redibujado en vector y wordmark ΠΣCRΘTRΛCKS
+  (`docs/assets/logo/necrotracks.svg`; símbolos inline en `index.html`). Negro, hueso y rojo sangre;
+  DIN Condensed (viene con iOS/macOS, sin descargas: en el venue no hay internet). Íconos SVG propios.
+  Menú fijo igual en todas las pantallas; en el celular, pestañas abajo y tablas en bloques.
+- **Instalable en el iPhone** (Compartir → Agregar a inicio): `manifest.webmanifest`, `icon-180.png` y
+  modo standalone. Los PNG salen de `web/static/icons/icon.svg` con `tools/icons.sh` (solo en la Mac).
 - Falta: elegir el perfil de hardware (hoy solo se ve cuál está activo en `/api/info`).
 
 ### Fase 4 — Controles físicos
