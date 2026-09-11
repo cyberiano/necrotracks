@@ -5,16 +5,18 @@ Complementa a `Reproductor multipista para vivo Necrotracks.md` (el *qué*); est
 
 ---
 
-## Estado actual y próximos pasos (2026-09-11, 09:45)
+## Estado actual y próximos pasos (2026-09-11, 12:20)
 
 **Hardware: la Pi 3B+ + iRig Stomp I/O es viable con `dwc_otg.speed=1`** (34 min limpios). Sin ese
 ajuste el iRig se silencia solo a los ~25 min. El iRig está sano: aguantó 34 min en la Mac. Detalle
 en "Diagnóstico del clipping" más abajo.
 
 **En la Pi hoy** (`necrotracks@192.168.1.32` por WiFi; el Ethernet está desenchufado):
-- `main` desplegado, `necrotracks-engine.service` activo y dueño del iRig (`1-1.3`, fuente externa).
+- `main` desplegado: `necrotracks-engine.service` (dueño del iRig, `1-1.3`, fuente externa) y
+  `necrotracks-web.service` (puerto 80).
 - `cmdline.txt` con `dwc_otg.speed=1`. logind con `RemoveIPC=no` (ver abajo).
-- Biblioteca: "Sands of time" reimportada. Set list `prueba` (2 veces la canción, espera de 5 s).
+- Biblioteca: "Sands of time" y "I will not spoil". Set lists `prueba` (2 × Sands of time, espera de
+  5 s) y `soak` (15 × Sands of time, `auto_next`).
 - `/var/lib/necrotracks/test/`: ~1,5 GB de archivos y logs de prueba. Se pueden borrar.
 
 **Probado en la Pi (2026-09-11):**
@@ -31,12 +33,15 @@ en "Diagnóstico del clipping" más abajo.
   `dwc_otg.speed=1`): **llegó con audio hasta el final**, sin errores USB ni reinicios del engine,
   33–35 °C, `throttled=0x0`, load < 0.3. Con el de anoche: 34 + 63 min limpios.
 
+- **Web (Fase 3) en la Pi**: `http://192.168.1.32` desde el celular. Show Mode con audio y el tiempo
+  en vivo; import de una canción real de la banda ("I will not spoil", 5:14, convertida de 44,1 a
+  48 kHz) desde la web, y suena.
+
 **Próximos pasos, en orden:**
-1. **Usarla en un ensayo** (el primer uso real). Si se traba → Raspberry Pi 4.
-2. **Fase 3: web** (config + Show Mode) sobre el socket del engine.
-3. **Fase 4: controles**: MIDI Learn con antirrebote (mapa del iRig más abajo), LEDs de los
+1. **Usarla en un ensayo** (el primer uso real) manejándola desde la web. Si se traba → Raspberry Pi 4.
+2. **Fase 4: controles**: MIDI Learn con antirrebote (mapa del iRig más abajo), LEDs de los
    footswitches como indicador de estado, OLED SH1106 + encoder, botones GPIO.
-4. Fase 5 (hotspot, chequeo pre-show en la UI, pánico, apagado seguro) y Fase 6 (MIDI de automatización).
+3. Fase 5 (hotspot, chequeo pre-show en la UI, pánico, apagado seguro) y Fase 6 (MIDI de automatización).
 
 **Pendientes y deudas:**
 - MIDI OUT hacia el DIN del iRig: sin probar (faltan cables).
@@ -183,6 +188,22 @@ Setlists y bloques en JSON. Todo operable por CLI antes de que exista la web.
 ### Fase 3 — Web UI
 Sin build step. Config (biblioteca, setlists, perfiles, import) + Show Mode + estado por WebSocket.
 Degrada bien: si se corta el WS, muestra "desconectado" y no bloquea nada.
+
+**Estado (2026-09-11): hecha y probada en la Pi.** `web/` (FastAPI, `necrotracks-web.service`, puerto 80,
+`Nice=10` e I/O `idle`). Vanilla JS, sin libs: `web/static/{index.html,app.js,style.css}`.
+- **SSE en vez de WebSocket**: el estado va en una sola dirección, `EventSource` reconecta solo y no
+  hace falta instalar soporte de WS en uvicorn. Comandos por `POST /api/cmd` al socket del engine.
+  Ping cada 10 s: 25 s sin nada = cartel "Sin conexión". Engine caído = cartel "¿iRig enchufado?".
+- **Show**: set list, bloque, canción N/total, tiempo y restante, qué hace al terminar, próxima,
+  cuenta regresiva de la espera, transporte grande y lista (tocar una = ir a, solo parado). Teclado.
+- **Set lists**: crear, renombrar (el slug no cambia), agregar, reordenar, bloque por fila o por rango,
+  comportamiento, chequeo pre-show, cargar/recargar en el engine. Avisa cambios sin guardar.
+- **Biblioteca**: import de archivos, ZIP o carpeta. El navegador sube de a un archivo (cuerpo crudo,
+  sin multipart) a `/var/lib/necrotracks/incoming` con el tope de 3 MB/s, después importa. No en
+  `/tmp`: es RAM (450 MB). Borrar canciones solo si no están en ninguna set list.
+- Nada se sube, importa ni borra mientras suena, y **si arranca la reproducción a mitad de un import,
+  se corta** (`store.Throttle(guard=True)`); la versión anterior de la canción queda intacta.
+- Falta: elegir el perfil de hardware (hoy solo se ve cuál está activo en `/api/info`).
 
 ### Fase 4 — Controles físicos
 MIDI in + **MIDI Learn** (footswitches del iRig → Play/Stop/Next/Prev).
