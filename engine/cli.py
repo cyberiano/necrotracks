@@ -14,6 +14,8 @@ from .audio import SAMPLERATE, Player
 PROFILES = {
     "irig-mono-click": [[0.5, 0.5, 0, 0], [0, 0, 1, 0]],
     "irig-stereo": [[1, 0, 0, 0], [0, 1, 0, 0]],
+    # Como la banda arma hoy sus archivos simples: L = click, R = pista mono
+    "irig-click-pista": [[0, 0, 1, 0], [0.5, 0.5, 0, 0]],
 }
 
 
