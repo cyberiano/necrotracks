@@ -13,11 +13,24 @@ apt-get update -qq
 DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
   git python3-venv python3-rtmidi python3-lgpio libportaudio2 alsa-utils i2c-tools
 
+# Un dtparam de la base tiene que ir ANTES del primer dtoverlay: si va después,
+# el firmware lo aplica a ese overlay y lo ignora. Mueve la línea si está mal ubicada.
+base_param() {
+  local first_ov line
+  first_ov=$(grep -nE '^dtoverlay=' "$CFG" | head -1 | cut -d: -f1)
+  line=$(grep -nxF "$1" "$CFG" | head -1 | cut -d: -f1)
+  if [ -n "$line" ] && [ -n "$first_ov" ] && [ "$line" -lt "$first_ov" ]; then return 0; fi
+  sed -i "\\|^$1\$|d" "$CFG"
+  first_ov=$(grep -nE '^dtoverlay=' "$CFG" | head -1 | cut -d: -f1)
+  if [ -n "$first_ov" ]; then sed -i "${first_ov}i $1" "$CFG"; else echo "$1" >> "$CFG"; fi
+  REBOOT=1
+}
+
 log "I2C (OLED) y SPI"
 [ -e /dev/i2c-1 ] || REBOOT=1
 raspi-config nonint do_i2c 0
 raspi-config nonint do_spi 0
-grep -qxF 'dtparam=i2c_arm_baudrate=400000' "$CFG" || { echo 'dtparam=i2c_arm_baudrate=400000' >> "$CFG"; REBOOT=1; }
+base_param 'dtparam=i2c_arm_baudrate=400000'
 
 log "Sin audio onboard, sin audio HDMI, sin Bluetooth"
 cfg_replace() { if grep -qE "$1" "$CFG"; then sed -i -E "s|$1|$2|" "$CFG"; REBOOT=1; fi; }
