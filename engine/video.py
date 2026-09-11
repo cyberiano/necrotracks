@@ -110,10 +110,9 @@ class Mpv:
         mode = self.mode() if self.mode else None
         extra = []
         if mode:
+            # Sin --drm-draw-surface-size: con la capa de mpv más chica que la pantalla, el video (que va en
+            # otra capa) queda ubicado con las medidas de la chica y tapado (probado en la Pi: no se ve).
             extra.append(f"--drm-mode={mode}")
-            w, h, _ = _size(mode)
-            if w * h > 1280 * 720:  # el logo se dibuja en 720p y lo escala la Pi; el video no pasa por acá
-                extra.append("--drm-draw-surface-size=1280x720")
         self.current_mode = mode
         self.proc = subprocess.Popen(["mpv", *MPV_ARGS, *extra, f"--input-ipc-server={self.sock}"],
                                      stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
