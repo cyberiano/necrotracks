@@ -5,60 +5,70 @@ Complementa a `Reproductor multipista para vivo Necrotracks.md` (el *qué*); est
 
 ---
 
-## Estado actual y próximos pasos (2026-09-11, 12:20)
+## Estado actual y próximos pasos (cierre de sesión 2026-09-11, 18:10)
 
-**Hardware: la Pi 3B+ + iRig Stomp I/O es viable con `dwc_otg.speed=1`** (34 min limpios). Sin ese
-ajuste el iRig se silencia solo a los ~25 min. El iRig está sano: aguantó 34 min en la Mac. Detalle
-en "Diagnóstico del clipping" más abajo.
+**Hardware: la Pi 3B+ + iRig Stomp I/O es viable con `dwc_otg.speed=1`** (34 + 63 min limpios). Sin ese
+ajuste el iRig se silencia solo a los ~25 min. Detalle en "Diagnóstico del clipping" más abajo.
 
-**En la Pi hoy** (`necrotracks@192.168.1.32` por WiFi; el Ethernet está desenchufado):
-- `main` desplegado: `necrotracks-engine.service` (dueño del iRig, `1-1.3`, fuente externa) y
-  `necrotracks-web.service` (puerto 80).
-- `cmdline.txt` con `dwc_otg.speed=1`. logind con `RemoveIPC=no` (ver abajo).
-- Biblioteca: "Sands of time" y "I will not spoil". Set lists `prueba` (2 × Sands of time, espera de
-  5 s) y `soak` (15 × Sands of time, `auto_next`).
-- `/var/lib/necrotracks/test/`: ~1,5 GB de archivos y logs de prueba. Se pueden borrar.
+**En la Pi hoy** (`necrotracks@192.168.1.32` por la WiFi Akasha; el Ethernet está desenchufado):
+- `main` desplegado (código `2fb9de1`): `necrotracks-engine` (dueño del iRig en `1-1.3`, prioridad RT, MIDI
+  y video), `necrotracks-web` (puerto 80) y `necrotracks-hotspot` (hotspot si no hay WiFi conocida).
+- `cmdline.txt`: `dwc_otg.speed=1`, `console=tty3 quiet splash`, sin cursor. `config.txt`: audio integrado
+  prendido (jack de respaldo), `vc4-kms-v3d,noaudio,cma-384`, `disable_splash=1`. Plymouth con el tema
+  `necrotracks`; `getty@tty1` deshabilitado; logind con `RemoveIPC=no`. mpv 0.40 y ffmpeg 7.1 por apt.
+- Biblioteca: "Sands of time", "I will not spoil" y "There is a Place" (con video 720p). Set lists `prueba`,
+  `soak` y `video-prueba`. `video-logo.png` (logo blanco de Necrópolis) está en los datos, no en el repo.
+  En `data/reposo/` quedó la imagen que subió Cristian.
+- `config.json`: `hdmi_mode` 1920x1080 (elegido a mano), `video_fit` (vertical −2,5 %), `idle_fit`.
+- `/var/lib/necrotracks/video-prueba/`: videos de prueba y una copia del MP4 original. Se pueden borrar.
+- Monitor de prueba: un Samsung detrás de un adaptador HDMI-VGA (EDID "TS35505", pide 1024x768).
 
-**Probado en la Pi (2026-09-11):**
-- Deploy, import (70 s para 4:11, con el tope de 3 MB/s) y set list por `ctl`: `load`, `play`, `goto`,
-  paso solo a la siguiente con la espera. Suena bien.
-- **Importar con el stream abierto (parado) no trabó al iRig.**
-- **Desenchufar/reenchufar el iRig sonando**: el vigía lo detecta a los 2 s, el engine sale, systemd lo
-  reintenta y al volver el iRig arranca en 1 s, con la set list y el cursor, parado. Suena bien después.
-- **Bug encontrado**: `RemoveIPC=yes` (default de logind) borraba `/dev/shm/necrotracks` al cerrar la
-  última sesión SSH: socket, cursor y **la bandera que bloquea el import mientras suena**. El bootstrap
-  ahora deja `RemoveIPC=no`.
+**Hecho y probado en la Pi (2026-09-11)**, detalle en cada fase:
+- Engine en servicio, import, set lists por `ctl`; el iRig desenchufado y reenchufado sonando vuelve solo.
+- Soak de 63 min con el engine en servicio: audio hasta el final, sin errores USB.
+- Web (Fase 3) con la identidad de Necrotracks, instalable en el iPhone. Import desde el celular.
+- Footswitches del iRig y MIDI Learn (Fase 4, parte).
+- Hotspot "Necrotracks" probado con el iPhone y la app instalada.
+- Jack de la Pi como salida de respaldo (abre y reproduce; falta escucharlo).
+- Video por HDMI: MP4 con audio (click/pista) en la biblioteca, mpv por hardware sincronizado al audio (≤0,1 s),
+  encaje y patrón de ajuste, pantalla de reposo configurable (imagen probada), resolución automática que se
+  corrige sola, arranque con el logo de Necrotracks y la tty1 en negro. Ver "Visuales por HDMI".
+- Bugs arreglados: `RemoveIPC` borraba el socket y la bandera "sonando"; play + pausa fantasma (escuchadores
+  acumulados en la web y una pausa que se perdía en el Player); CMA agotada (video congelado).
 
-- **Soak de 63 min** (09:45–10:48, set list de 15 canciones en `auto_next`, engine en servicio,
-  `dwc_otg.speed=1`): **llegó con audio hasta el final**, sin errores USB ni reinicios del engine,
-  33–35 °C, `throttled=0x0`, load < 0.3. Con el de anoche: 34 + 63 min limpios.
+**Observado al cierre, sin arreglar** (con hipótesis para la próxima sesión):
+1. **Al arrancar un video, la imagen de reposo se agranda un instante** antes de que aparezca el video. mpv
+   deshace las opciones por archivo (el `video-zoom` del reposo) al cambiar de archivo y dibuja un cuadro a tamaño
+   completo. Idea: aplicar el encaje del reposo con `set_property` (global) y el de los videos por archivo, o
+   tapar el cambio con negro.
+2. **Stop: el audio corta al instante pero el video tarda 1–2 s.** Al volver al reposo, `Video._flat` corre
+   ffmpeg para aplanar la imagen **cada vez** (no hay caché) y el hilo de video mira el estado cada 0,25 s.
+   Arreglo: cachear el aplanado por (ruta, mtime); opcional: que el engine despierte al hilo en cada cambio.
+3. **Fundidos de ~500 ms** al entrar y salir el reposo o el video (pedido de Cristian): viable sin tocar la
+   decodificación. La capa de mpv (draw plane) está encima del video: un rectángulo negro con `osd-overlay`
+   (ASS con alfa) animado en ~10 pasos por el socket. Verificar que se vea con `--osd-level=0`. Nada de
+   `--vf=fade`: obliga a copiar los cuadros por la CPU.
+4. **Al terminar un video aparece "una especie de CLS"**: sospecha de la consola (fbcon de la tty1) asomando en el
+   cambio de archivo, o de la capa primaria vacía. El fundido lo taparía; si no, ver `fbcon=map:` para sacar la
+   consola del HDMI.
 
-- **Web (Fase 3) en la Pi**: `http://192.168.1.32` desde el celular. Show Mode con audio y el tiempo
-  en vivo; import de una canción real de la banda ("I will not spoil", 5:14, convertida de 44,1 a
-  48 kHz) desde la web, y suena.
-- **Footswitches del iRig (Fase 4)**: los 4 manejan el show con el mapa por defecto; ~30 pisadas en el
-  journal, cada una llegó una sola vez (la más cercana a 530 ms de la anterior: dos pisadas reales).
-
-- **Hotspot WiFi** (`bin/remote/hotspot.sh`, `necrotracks-hotspot.service`): red "Necrotracks" (WPA2, la
-  clave no está en el repo: `HOTSPOT_PSK` la primera vez), 5 GHz canal 36, la Pi en 192.168.4.1 y
-  `necrotracks.local` también por DNS. Se levanta solo si al arrancar no hay WiFi conocida en ~45 s.
-  **Probado con el iPhone (2026-09-11)**: se conectó, la app instalada abrió y se usó; al desconectarse, la
-  Pi volvió sola a Akasha. Falta verlo arrancar solo sin WiFi conocida (en la sala de ensayo).
-- **Jack de la Pi como respaldo** (perfil `pi-jack`, `fallback` en `config.json`): si al arrancar no está
-  la placa del perfil elegido, sale por el jack; cuando vuelve, con la reproducción parada, el engine se
-  reinicia para usarla. La web lo avisa en el Show y se elige en Ajustes. En la Pi (bootstrap + reinicio):
-  el engine arranca por el iRig, el jack abre y reproduce (0 xruns) y quedó en 0 dB. **Falta escucharlo.**
-  Ojo: con el audio integrado prendido, el jack es la placa 0 y el iRig la 1 (el código busca por nombre).
+**Pruebas físicas pendientes** (con Cristian, de a una):
+- Un video como pantalla de reposo.
+- Reiniciar y ver que mpv se corrige solo al modo HDMI (en el reinicio anterior arrancó en 1024x768).
+- **Video "lavado"**: comparar el negro del logo o del patrón con el del video. Si todo se ve gris, es el rango
+  de la salida HDMI ("Broadcast RGB" limitado); si solo el video, el rango YUV de la capa de video. `modetest`
+  (paquete `libdrm-tests`) muestra las propiedades.
+- Escuchar el jack de respaldo.
+- Prueba larga (30 min) con video y el iRig sonando, mirando el vúmetro. Si traba → Raspberry Pi 4.
+- El hotspot levantándose solo sin WiFi conocida (en la sala de ensayo).
 
 **Próximos pasos, en orden:**
-1. **Pruebas físicas con Cristian en casa**, de a una: (a) el hotspot con el iPhone y la app instalada;
-   (b) escuchar el jack de respaldo; (c) **video: 30 min con el engine sonando por el iRig y "There is a
-   Place" en la set list `video-prueba`**, mirando el vúmetro del iRig y el monitor (el logo entre
-   canciones, el video junto con el click). Si el iRig se traba con el video → Raspberry Pi 4.
-2. **Usarla en un ensayo** (el primer uso real) manejándola desde la web, con el hotspot.
-3. **Fase 4, lo que falta**: LEDs de los footswitches como indicador de estado, OLED SH1106 +
-   encoder, botones GPIO (los footswitches y el MIDI Learn ya están).
-4. Fase 5 (hotspot, chequeo pre-show en la UI, pánico, apagado seguro) y Fase 6 (MIDI de automatización).
+1. Arreglar los cuatro detalles del video de arriba.
+2. Las pruebas físicas pendientes.
+3. **Usarla en un ensayo** (el primer uso real), manejándola desde la web con el hotspot.
+4. **Fase 4, lo que falta**: LEDs de los footswitches como indicador de estado, OLED SH1106 + encoder,
+   botones GPIO (Cristian todavía no tiene el hardware).
+5. Fase 5 (chequeo pre-show en la UI, pánico, apagado seguro) y Fase 6 (MIDI de automatización).
 
 **Pendientes y deudas:**
 - MIDI OUT hacia el DIN del iRig: sin probar (faltan cables).
@@ -68,6 +78,8 @@ en "Diagnóstico del clipping" más abajo.
 - `necrotracks.local` todavía resuelve también la IP vieja del Ethernet: los scripts usan
   `NECROTRACKS_HOST` con la IP del WiFi hasta que se acomode.
 - El import con el stream abierto se probó parado, un solo archivo. Sigue bloqueado mientras suena.
+- `bin/deploy.sh` reinicia todos los servicios (el engine también): nunca mientras suena. Para cambios solo de
+  la web alcanza `git pull` + `systemctl restart necrotracks-web`.
 
 ---
 
