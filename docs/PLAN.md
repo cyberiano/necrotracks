@@ -238,6 +238,11 @@ Degrada bien: si se corta el WS, muestra "desconectado" y no bloquea nada.
   guardar en el editor no cambiaba el show. Se notaba feo: el show seguía con la lista vieja, con Siguiente y
   Anterior apagados y sin las canciones nuevas (le pasó a Cristian). Ahora, al guardar, si es la set list
   cargada y está parado, la web la recarga sola.
+- **Casillero propio y caché** (2026-09-11): la regla general de los campos les saca la apariencia nativa
+  (`appearance: none`, para el estilo de la app) y un `<input type=checkbox>` quedaba **invisible tildado o
+  sin tildar** —lo mismo que ya había pasado con el deslizante—. Va uno propio: cuadrado rojo con tilde blanca.
+  Y `index.html` pide `style.css` y `app.js` con **`?v=N`**: si no, el navegador (sobre todo el iPhone con la
+  app instalada) se queda con la versión vieja. **Subir el número al tocar cualquiera de los dos.**
 - Falta: elegir el perfil de hardware (hoy solo se ve cuál está activo en `/api/info`).
 
 ### Fase 4 — Controles físicos
