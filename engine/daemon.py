@@ -250,6 +250,8 @@ class Engine:
     def _on_change(self, snapshot):
         if self.show:
             store.write_json(cursor_path(), {"setlist": self.show.setlist["slug"], "index": snapshot["index"]})
+        if self.video:
+            self.video.poke()
         if self.loop:
             self.loop.call_soon_threadsafe(self._broadcast, {**snapshot, "output": self.output})
 

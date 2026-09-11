@@ -15,14 +15,20 @@ class FakeMpv:
     def __init__(self):
         self.cmds = []
         self.props = {"time-pos": 0.0, "eof-reached": False}
+        self.overlays = []
 
     def alive(self):
         return True
 
     def command(self, *args):
         self.cmds.append(args)
+        if args[0] == "loadfile":
+            self.props["path"] = args[1]
         if args[0] == "get_property":
             return self.props.get(args[1])
+
+    def overlay(self, opacity):
+        self.overlays.append((round(opacity, 2), self.props.get("path")))
 
 
 class Clock:
@@ -41,7 +47,8 @@ def make(tmp_path):
     logo = tmp_path / "logo.png"
     logo.write_bytes(b"png")
     mpv, clock = FakeMpv(), Clock()
-    v = Video(None, lambda s: f"/v/{s}.mp4" if s == "uno" else None, lambda: logo, delay=0.1, mpv=mpv, clock=clock)
+    v = Video(None, lambda s: f"/v/{s}.mp4" if s == "uno" else None, lambda: logo, delay=0.1, mpv=mpv, clock=clock,
+              fade=0)
     return v, mpv, clock, logo
 
 
@@ -97,9 +104,48 @@ def test_sincronia(tmp_path):
 
 def test_sin_logo_queda_negro(tmp_path):
     mpv = FakeMpv()
-    v = Video(None, lambda s: None, lambda: None, mpv=mpv)
+    v = Video(None, lambda s: None, lambda: None, mpv=mpv, fade=0)
     v.step(st("stopped"))
     assert mpv.cmds == [("stop",)]
+
+
+def test_fundido_a_negro_al_cambiar(tmp_path, monkeypatch):
+    import engine.video as video
+
+    v, mpv, clock, logo = make(tmp_path)
+    monkeypatch.setattr(video.time, "sleep", lambda s: setattr(clock, "t", clock.t + s))
+    v.fade = 0.5
+    v.step(st("stopped"))  # recién levantado: el logo aparece desde negro
+    assert mpv.overlays[0] == (1.0, None) and mpv.overlays[-1] == (0.0, str(logo)) and len(mpv.overlays) == 11
+    mpv.overlays.clear()
+    v.step(st("playing", pos=0.5))
+    # el cambio de archivo pasa con la pantalla en negro: nunca se ve el reposo agrandándose ni la consola
+    assert mpv.overlays[:10] == [(round(i / 10, 2), str(logo)) for i in range(1, 11)]
+    assert mpv.overlays[10] == (0.9, "/v/uno.mp4") and mpv.overlays[-1] == (0.0, "/v/uno.mp4")
+    # posición 0,5 − latencia 0,1 + 0,5 que siguió sonando durante el fundido + 0,33 de adelanto
+    assert [c for c in mpv.cmds if c[0] == "loadfile"][-1][4].startswith("start=1.230,")
+    mpv.overlays.clear()
+    v.step(st("stopped"))
+    assert mpv.overlays[9] == (1.0, "/v/uno.mp4") and mpv.overlays[-1] == (0.0, str(logo))
+
+
+def test_reposo_aplanado_una_sola_vez(tmp_path, monkeypatch):
+    import os
+
+    import engine.video as video
+
+    calls = []
+    monkeypatch.setattr(video, "flatten", lambda image, out: (calls.append(image), out)[1])
+    logo = tmp_path / "logo.png"
+    logo.write_bytes(b"png")
+    mpv = FakeMpv()
+    v = Video(None, lambda s: "/v/uno.mp4", lambda: logo, mpv=mpv, cache_dir=tmp_path, fade=0)
+    for state in ("stopped", "playing", "stopped", "playing", "stopped"):
+        v.step(st(state))
+    assert calls == [logo] and mpv.cmds[-1][1] == str(tmp_path / "reposo-plano.png")  # Stop sin esperar a ffmpeg
+    os.utime(logo, (1, 1))  # otra imagen con el mismo nombre: se aplana de nuevo
+    v.step(st("stopped"))
+    assert calls == [logo, logo]
 
 
 @needs_ffmpeg
@@ -195,7 +241,8 @@ def test_reposo_con_video_en_loop_y_su_propio_encaje(tmp_path):
     idle = tmp_path / "reposo.mp4"
     idle.write_bytes(b"mp4")
     mpv, clock = FakeMpv(), Clock()
-    v = Video(None, lambda s: None, lambda: idle, mpv=mpv, clock=clock, idle_fit={"mode": "fill", "scale": 100})
+    v = Video(None, lambda s: None, lambda: idle, mpv=mpv, clock=clock, idle_fit={"mode": "fill", "scale": 100},
+              fade=0)
     v.step(st("stopped"))
     assert mpv.cmds[-1] == ("loadfile", str(idle), "replace", -1, "keepaspect=yes,panscan=1,video-zoom=0,"
                             "video-pan-x=0,video-pan-y=0,background-color=#00000000,loop-file=inf,pause=no")

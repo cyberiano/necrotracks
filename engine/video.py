@@ -58,6 +58,14 @@ STEP = 0.25
 RETRY = 10  # segundos entre intentos de levantar mpv (p. ej. sin pantalla conectada)
 PLYMOUTH_WAIT = 60  # segundos, como mucho, esperando que termine la pantalla de arranque
 MODE_CHECK = 5  # segundos entre chequeos de que mpv esté en el modo HDMI que corresponde (solo parado)
+# Fundidos: al cambiar lo que hay en pantalla, negro encima de todo (un OSD de mpv, que va en la capa de arriba)
+# que aparece de a poco, se cambia el archivo por debajo y se va de a poco. Así no se ven los saltos del cambio
+# (el reposo que se agranda un instante, la consola asomando al terminar un video). Nada de --vf=fade: obliga a
+# pasar los cuadros por la CPU. Probado en la Pi: el OSD se ve con --osd-level=0.
+FADE = 0.5  # segundos de cada fundido
+FADE_STEP = 0.05
+LOAD_WAIT = 2.0  # segundos, como mucho, esperando que mpv cargue el archivo nuevo antes de volver del negro
+BLACK = r"{\an7\pos(0,0)\bord0\shad0\1c&H000000&\1a&H%02X&\p1}m -3000 -3000 l 6000 -3000 6000 4000 -3000 4000"
 
 
 def hdmi_modes(base="/sys/class/drm"):
@@ -169,8 +177,10 @@ class Mpv:
         self.proc = None
         self.mode = mode  # () → "WxH" o None (el que prefiere la pantalla); se consulta en cada arranque
         self.current_mode = None
+        self._osd = None  # conexión fija para el negro de los fundidos
 
     def start(self):
+        self._close_osd()
         self.sock.parent.mkdir(parents=True, exist_ok=True)
         mode = self.mode() if self.mode else None
         extra = []
@@ -198,21 +208,50 @@ class Mpv:
         with socket.socket(socket.AF_UNIX) as s:
             s.settimeout(1)
             s.connect(str(self.sock))
-            s.sendall((json.dumps({"command": list(args)}) + "\n").encode())
-            f = s.makefile(encoding="utf-8")
-            while True:
-                msg = json.loads(f.readline())
-                if "event" in msg:
-                    continue  # mpv manda eventos a todos los clientes: no son la respuesta
-                if msg.get("error") != "success":
-                    raise RuntimeError(f"mpv {args[0]}: {msg.get('error')}")
-                return msg.get("data")
+            return _request(s, s.makefile(encoding="utf-8"), args)
+
+    def overlay(self, opacity):
+        """Negro encima de todo: 0 = nada, 1 = negro. Va por una conexión que queda abierta porque mpv borra
+        los overlays de una conexión al cerrarse. Por lo mismo, si algo falla a mitad de un fundido, el negro
+        no se queda pegado: se corta la conexión y mpv lo saca."""
+        if opacity <= 0:
+            args = ("osd-overlay", 1, "none", "", 0, 0, 0, False, False)
+        else:
+            args = ("osd-overlay", 1, "ass-events", BLACK % round(255 * (1 - min(opacity, 1.0))), 0, 720, 0, False, False)
+        try:
+            if self._osd is None:
+                s = socket.socket(socket.AF_UNIX)
+                s.settimeout(1)
+                s.connect(str(self.sock))
+                self._osd = (s, s.makefile(encoding="utf-8"))
+                _request(*self._osd, ("disable_event", "all"))  # que no se junten eventos sin leer
+            _request(*self._osd, args)
+        except (OSError, RuntimeError, ValueError):
+            self._close_osd()
+            raise
+
+    def _close_osd(self):
+        if self._osd:
+            self._osd[0].close()
+            self._osd = None
+
+
+def _request(s, f, args):
+    s.sendall((json.dumps({"command": list(args)}) + "\n").encode())
+    while True:
+        msg = json.loads(f.readline())
+        if "event" in msg:
+            continue  # mpv manda eventos a todos los clientes: no son la respuesta
+        if msg.get("error") != "success":
+            raise RuntimeError(f"mpv {args[0]}: {msg.get('error')}")
+        return msg.get("data")
 
 
 class Video:
     def __init__(self, get_state, video_for, idle, delay=0.0, mpv=None, clock=time.monotonic, cache_dir=None,
-                 fit=None, idle_fit=None):
+                 fit=None, idle_fit=None, fade=FADE):
         self.get_state = get_state  # → estado del engine (el mismo que ve la web)
+        self.fade = fade  # segundos de cada fundido; 0 = cambios secos
         self.video_for = video_for  # slug → ruta del video, o None
         self.idle = idle  # () → ruta de la pantalla de reposo (imagen o video), o None: negro
         self.cache_dir = cache_dir  # dónde dejar imágenes aplanadas y el patrón (RAM); None = sin eso
@@ -229,9 +268,15 @@ class Video:
         self.paused = None
         self.speed = 1.0
         self._last_sync = 0.0
+        self._flat_cache = (None, None)  # ((ruta, mtime), imagen aplanada)
+        self._wake = threading.Event()
 
     def start(self):
         threading.Thread(target=self._run, daemon=True, name="video").start()
+
+    def poke(self):
+        """Cambió el estado del engine: que el hilo lo mire ya, sin esperar su vuelta (p. ej. un Stop)."""
+        self._wake.set()
 
     def _run(self):
         # Si mpv toma la pantalla mientras está la de arranque (Plymouth), al cerrarse ésta deja todo en
@@ -263,7 +308,8 @@ class Video:
             except (OSError, RuntimeError, ValueError) as e:
                 log.warning("video: %s", e)
                 time.sleep(1)
-            time.sleep(STEP)
+            self._wake.wait(STEP)
+            self._wake.clear()
 
     def _check_mode(self):
         """Si mpv no está en el modo HDMI que corresponde, lo reinicia en ese modo. Pasa al arrancar (la
@@ -310,23 +356,36 @@ class Video:
         target = round(max(0.0, s["position"] - self.delay), 3)
         paused = s["state"] == "paused"
         if want != self.loaded:
+            if self.fade:
+                t0 = self.clock()
+                if self.loaded:  # algo en pantalla: se va a negro de a poco
+                    self._fade(0.0, 1.0)
+                else:
+                    self.mpv.overlay(1.0)  # recién levantado (o en negro): lo nuevo aparece desde negro
+                if kind == "video" and not paused:
+                    target = round(target + self.clock() - t0, 3)  # el audio siguió sonando durante el fundido
+            path = want[1] if want else None
             if kind == "video":
                 start = target if paused else target + LOAD_LEAD
-                self.mpv.command("loadfile", want[1], "replace", -1,
+                self.mpv.command("loadfile", path, "replace", -1,
                                  f"start={start:.3f},{fit_opts(self.fit)},{VIDEO_BG},pause={'yes' if paused else 'no'}")
                 self.paused = paused
             elif kind == "pattern":
-                self.mpv.command("loadfile", want[1], "replace", -1, f"{fit_opts(self.fit)},{VIDEO_BG},pause=no")
-            elif kind == "idle" and Path(want[1]).suffix.lower() in VIDEO_EXT:
-                self.mpv.command("loadfile", want[1], "replace", -1,
+                self.mpv.command("loadfile", path, "replace", -1, f"{fit_opts(self.fit)},{VIDEO_BG},pause=no")
+            elif kind == "idle" and Path(path).suffix.lower() in VIDEO_EXT:
+                self.mpv.command("loadfile", path, "replace", -1,
                                  f"{fit_opts(self.idle_fit)},{VIDEO_BG},loop-file=inf,pause=no")
             elif kind == "idle":
-                self.mpv.command("loadfile", str(self._flat(Path(want[1]))), "replace", -1,
-                                 f"{fit_opts(self.idle_fit)},pause=no")
+                path = str(self._flat(Path(path)))
+                self.mpv.command("loadfile", path, "replace", -1, f"{fit_opts(self.idle_fit)},pause=no")
             else:
                 self.mpv.command("stop")  # sin reposo: negro
             self.loaded = want
             self._set_speed(1.0)
+            if self.fade:
+                if path:
+                    self._wait_loaded(path)
+                self._fade(1.0, 0.0)
             self._last_sync = self.clock()
             return
         if kind != "video":
@@ -338,8 +397,30 @@ class Video:
             self._last_sync = self.clock()
             self._sync(target)
 
+    def _fade(self, start, end):
+        """Del negro `start` al `end` (0 = nada, 1 = negro) en self.fade segundos."""
+        n = max(1, round(self.fade / FADE_STEP))
+        for i in range(1, n + 1):
+            time.sleep(self.fade / n)
+            self.mpv.overlay(start + (end - start) * i / n)
+
+    def _wait_loaded(self, path):
+        """Espera a que mpv tenga cargado `path` (loadfile vuelve antes), para no volver del negro al viejo."""
+        for _ in range(int(LOAD_WAIT / FADE_STEP)):
+            if self._get("path") == path and self._get("time-pos") is not None:
+                return
+            time.sleep(FADE_STEP)
+        log.info("video: %s tarda en cargar; vuelvo del negro igual", path)
+
     def _flat(self, image):
-        return flatten(image, Path(self.cache_dir) / "reposo-plano.png") if self.cache_dir else image
+        """La imagen de reposo aplanada. Se hace una vez por archivo (ruta y mtime): ffmpeg en la 3B+ tarda
+        ~1 s, y sin caché cada Stop dejaba el video andando ese rato con el audio ya cortado."""
+        if not self.cache_dir:
+            return image
+        key = (str(image), image.stat().st_mtime)
+        if self._flat_cache[0] != key:
+            self._flat_cache = (key, flatten(image, Path(self.cache_dir) / "reposo-plano.png"))
+        return self._flat_cache[1]
 
     def _apply(self, fit):
         for prop, value in fit_props(fit).items():
