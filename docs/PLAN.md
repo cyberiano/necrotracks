@@ -27,8 +27,12 @@ en "Diagnóstico del clipping" más abajo.
   última sesión SSH: socket, cursor y **la bandera que bloquea el import mientras suena**. El bootstrap
   ahora deja `RemoveIPC=no`.
 
+- **Soak de 63 min** (09:45–10:48, set list de 15 canciones en `auto_next`, engine en servicio,
+  `dwc_otg.speed=1`): **llegó con audio hasta el final**, sin errores USB ni reinicios del engine,
+  33–35 °C, `throttled=0x0`, load < 0.3. Con el de anoche: 34 + 63 min limpios.
+
 **Próximos pasos, en orden:**
-1. **Soak largo** (60+ min) con `dwc_otg.speed=1` y el engine en servicio, y después usarla en un ensayo.
+1. **Usarla en un ensayo** (el primer uso real). Si se traba → Raspberry Pi 4.
 2. **Fase 3: web** (config + Show Mode) sobre el socket del engine.
 3. **Fase 4: controles**: MIDI Learn con antirrebote (mapa del iRig más abajo), LEDs de los
    footswitches como indicador de estado, OLED SH1106 + encoder, botones GPIO.
