@@ -213,8 +213,24 @@ Implicancias para el MIDI Learn:
 - CC continuos (CC 11) se ignoran al aprender acciones de botón.
 - La actividad MIDI no afectó el audio (soak en curso, `xruns=0`).
 
-Pendiente:
-- MIDI del iRig en **modo stomp**.
+### MIDI del iRig — modo stomp (2026-09-10)
+
+Mismo canal 1 y puerto `MIDI 1`. Cada footswitch es un interruptor: alterna 127 / 0.
+
+| Control | Mensaje |
+|---|---|
+| Footswitch A | CC 20 (127 / 0) |
+| Footswitch B | CC 21 (127 / 0) |
+| Footswitch C | CC 22 (127 / 0) |
+| Footswitch D | CC 23 (127 / 0) |
+| ¿Cambio de modo? | CC 39 = 127 (llegó justo antes de las pisadas; sin confirmar) |
+
+⚠️ **Rebote**: una pisada del D mandó `0 → 127 → 0` en 140 ms. **El MIDI Learn necesita
+antirrebote** (ignorar repeticiones del mismo control dentro de ~200 ms) en los dos modos:
+si no, una pisada de "Next" puede saltearse una canción en vivo.
+
+Recomendación: usar el **modo normal** (Program Change). Un mensaje distinto por footswitch
+y sin estado de prendido/apagado que confunda con los LEDs. El Learn soporta los dos igual.
 - **Deuda: MIDI OUT sin probar.** Faltan cables. Hasta probarlo, se asume que lo que la Pi manda
   a `iRig Stomp IO MIDI 1` sale por el DIN OUT. Si no sale, plan B: cable USB-MIDI aparte.
 - Estabilidad de 30 min con carga (Fase 1) — **interrumpida**, ver hallazgos abajo.
