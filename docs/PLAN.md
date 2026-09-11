@@ -113,6 +113,10 @@ Un `render.wav` de 4ch saliendo por el perfil iRig. Play/stop desde CLI. **Hito 
 Carpeta o ZIP por canción → `render.wav`. Convención: nombre de carpeta = nombre de canción,
 archivos `foh_L.wav`, `foh_R.wav`, `click.wav`, `guia.wav` (los que existan).
 También acepta un `foh.wav` estéreo. Documentado en la UI.
+**Formato simple de la banda (el que usan hoy):** un solo WAV de 2 canales con **L = click,
+R = pista mono**. El import lo reconoce y arma el render con pista en ch1/ch2 y click en ch3.
+El perfil del iRig de la banda es `irig-click-pista`: **salida L = click, salida R = pista**
+(el orden inverso al que yo había supuesto).
 Setlists y bloques en JSON. Todo operable por CLI antes de que exista la web.
 
 ### Fase 3 — Web UI
