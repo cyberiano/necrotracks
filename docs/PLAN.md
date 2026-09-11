@@ -194,9 +194,27 @@ Los WAV **nunca** van al repo.
   con venv `--system-site-packages`. `lgpio` viene del sistema.
 - **Repo público** → la Pi clona por HTTPS, sin deploy key.
 
+### MIDI del iRig — modo normal (2026-09-10)
+
+Todo por **canal 1**, puerto `iRig Stomp IO MIDI 1`. El puerto `Control` no manda nada.
+
+| Control | Mensaje | Comportamiento |
+|---|---|---|
+| Footswitch A | Program Change 0 | 1 mensaje por pisada, nada al soltar |
+| Footswitch B | Program Change 1 | ídem |
+| Footswitch C | Program Change 2 | ídem |
+| Footswitch D | Program Change 3 | ídem |
+| Pedal de expresión | CC 11 | continuo, 6..127, ~65 msg/s en movimiento |
+| Toe switch (bajo el pedal) | CC 26 | alterna 127 / 0 en cada pisada |
+
+Implicancias para el MIDI Learn:
+- En modo normal no hay pisada larga (no hay mensaje al soltar).
+- CC de tipo toggle (CC 26): **cualquier valor** cuenta como pisada.
+- CC continuos (CC 11) se ignoran al aprender acciones de botón.
+- La actividad MIDI no afectó el audio (soak en curso, `xruns=0`).
+
 Pendiente:
-- Qué manda cada footswitch y el pedal de expresión, y en qué puerto (necesita a Cristian pisando).
-  **Probar los dos modos del iRig: normal y stomp mode.**
+- MIDI del iRig en **modo stomp**.
 - **Deuda: MIDI OUT sin probar.** Faltan cables. Hasta probarlo, se asume que lo que la Pi manda
   a `iRig Stomp IO MIDI 1` sale por el DIN OUT. Si no sale, plan B: cable USB-MIDI aparte.
 - Estabilidad de 30 min con carga (Fase 1) — **interrumpida**, ver hallazgos abajo.
