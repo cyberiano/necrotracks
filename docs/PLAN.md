@@ -11,7 +11,7 @@ Complementa a `Reproductor multipista para vivo Necrotracks.md` (el *qué*); est
 ajuste el iRig se silencia solo a los ~25 min. Detalle en "Diagnóstico del clipping" más abajo.
 
 **En la Pi hoy** (`necrotracks@192.168.1.32` por la WiFi Akasha; el Ethernet está desenchufado):
-- `main` desplegado (código `2fb9de1`): `necrotracks-engine` (dueño del iRig en `1-1.3`, prioridad RT, MIDI
+- `main` desplegado (código `8501ad0`): `necrotracks-engine` (dueño del iRig en `1-1.3`, prioridad RT, MIDI
   y video), `necrotracks-web` (puerto 80) y `necrotracks-hotspot` (hotspot si no hay WiFi conocida).
 - `cmdline.txt`: `dwc_otg.speed=1`, `console=tty3 quiet splash`, sin cursor. `config.txt`: audio integrado
   prendido (jack de respaldo), `vc4-kms-v3d,noaudio,cma-384`, `disable_splash=1`. Plymouth con el tema
@@ -19,7 +19,7 @@ ajuste el iRig se silencia solo a los ~25 min. Detalle en "Diagnóstico del clip
 - Biblioteca: "Sands of time", "I will not spoil" y "There is a Place" (con video 720p). Set lists `prueba`,
   `soak` y `video-prueba`. `video-logo.png` (logo blanco de Necrópolis) está en los datos, no en el repo.
   En `data/reposo/` quedó la imagen que subió Cristian.
-- `config.json`: `hdmi_mode` 1920x1080 (elegido a mano), `video_fit` (vertical −2,5 %), `idle_fit`.
+- `config.json`: `hdmi_mode` 1280x720 (elegido a mano), `video_fit` (vertical −2,5 %), `idle_fit`.
 - `/var/lib/necrotracks/video-prueba/`: videos de prueba y una copia del MP4 original. Se pueden borrar.
 - Monitor de prueba: un Samsung detrás de un adaptador HDMI-VGA (EDID "TS35505", pide 1024x768).
 
@@ -36,23 +36,15 @@ ajuste el iRig se silencia solo a los ~25 min. Detalle en "Diagnóstico del clip
 - Bugs arreglados: `RemoveIPC` borraba el socket y la bandera "sonando"; play + pausa fantasma (escuchadores
   acumulados en la web y una pausa que se perdía en el Player); CMA agotada (video congelado).
 
-**Observado al cierre, sin arreglar** (con hipótesis para la próxima sesión):
-1. **Al arrancar un video, la imagen de reposo se agranda un instante** antes de que aparezca el video. mpv
-   deshace las opciones por archivo (el `video-zoom` del reposo) al cambiar de archivo y dibuja un cuadro a tamaño
-   completo. Idea: aplicar el encaje del reposo con `set_property` (global) y el de los videos por archivo, o
-   tapar el cambio con negro.
-2. **Stop: el audio corta al instante pero el video tarda 1–2 s.** Al volver al reposo, `Video._flat` corre
-   ffmpeg para aplanar la imagen **cada vez** (no hay caché) y el hilo de video mira el estado cada 0,25 s.
-   Arreglo: cachear el aplanado por (ruta, mtime); opcional: que el engine despierte al hilo en cada cambio.
-3. **Fundidos de ~500 ms** al entrar y salir el reposo o el video (pedido de Cristian): viable sin tocar la
-   decodificación. La capa de mpv (draw plane) está encima del video: un rectángulo negro con `osd-overlay`
-   (ASS con alfa) animado en ~10 pasos por el socket. Verificar que se vea con `--osd-level=0`. Nada de
-   `--vf=fade`: obliga a copiar los cuadros por la CPU.
-4. **Al terminar un video aparece "una especie de CLS"**: sospecha de la consola (fbcon de la tty1) asomando en el
-   cambio de archivo, o de la capa primaria vacía. El fundido lo taparía; si no, ver `fbcon=map:` para sacar la
-   consola del HDMI.
+**Detalles del video, arreglados (2026-09-11, `8501ad0`)**. Ver "Fundidos" en "Visuales por HDMI".
+- Fundidos de 0,5 s en cada cambio de pantalla, con el archivo cambiado bajo negro. Eso tapa **el reposo que
+  se agrandaba** al arrancar un video. Cristian lo vio: Play y Stop limpios.
+- **Stop sin demora**: el engine despierta al hilo de video y el aplanado del reposo tiene caché.
+- **El "CLS" al terminar un video**: pasa por el mismo camino (al reposo con fundido), pero falta verlo con un
+  video que termine solo. Si sigue: `fbcon=map:` para sacar la consola del HDMI.
 
 **Pruebas físicas pendientes** (con Cristian, de a una):
+- Un video que termine solo (sin Stop): que no aparezca el "CLS".
 - Un video como pantalla de reposo.
 - Reiniciar y ver que mpv se corrige solo al modo HDMI (en el reinicio anterior arrancó en 1024x768).
 - **Video "lavado"**: comparar el negro del logo o del patrón con el del video. Si todo se ve gris, es el rango
@@ -63,7 +55,7 @@ ajuste el iRig se silencia solo a los ~25 min. Detalle en "Diagnóstico del clip
 - El hotspot levantándose solo sin WiFi conocida (en la sala de ensayo).
 
 **Próximos pasos, en orden:**
-1. Arreglar los cuatro detalles del video de arriba.
+1. ~~Arreglar los detalles del video~~ (hecho).
 2. Las pruebas físicas pendientes.
 3. **Usarla en un ensayo** (el primer uso real), manejándola desde la web con el hotspot.
 4. **Fase 4, lo que falta**: LEDs de los footswitches como indicador de estado, OLED SH1106 + encoder,
@@ -331,6 +323,15 @@ real de la banda ("There is a Place", H.264 720p30, 7,4 Mbps, AAC 44,1 kHz, 4:30
   la tty1 queda negra (kernel en `console=tty3`, `quiet splash`, sin cursor ni login; login en Ctrl+Alt+F2).
   Primer reinicio: después del logo quedó todo negro porque mpv tomó la pantalla antes de que Plymouth terminara;
   ahora mpv espera a que se cierre `plymouthd` (probado: Plymouth terminó 18:01:08, mpv tomó la pantalla 18:01:18).
+- **Fundidos** (0,5 s, pedido de Cristian): cada cambio de pantalla (reposo, video, patrón) pasa por negro.
+  Un rectángulo negro con `osd-overlay` (ASS con alfa, 10 pasos) en la capa de mpv, que está encima del video,
+  sin tocar la decodificación (nada de `--vf=fade`, que copia los cuadros por la CPU). El archivo se cambia con
+  la pantalla en negro y se vuelve cuando mpv ya lo cargó. El video arranca contando lo que sonó durante el fundido.
+  Lo que aprendimos probando: **mpv borra los overlays de una conexión IPC cuando se cierra**, así que el negro va
+  por una conexión fija (si se corta a mitad de un fundido, el negro no queda pegado). Se ve con `--osd-level=0`.
+  **`screenshot-to-file … window` no incluye el OSD** (ni un `show-text`): el fundido solo se puede ver en la pantalla.
+- Stop: el engine despierta al hilo de video en cada cambio de estado (antes lo miraba cada 0,25 s) y el
+  reposo se aplana una vez por archivo (ruta y mtime), no en cada Stop: ffmpeg tarda ~1 s en la 3B+.
 - Pendiente: el video "lavado" (sospecha: rango de color limitado/completo en algún punto de la cadena Pi →
   adaptador HDMI-VGA → monitor; falta comparar el negro del logo con el del video).
 - Ojo con reiniciar el engine: al abrir el iRig con la CMA casi agotada, el USB lo perdió
