@@ -265,7 +265,10 @@ Reglas que salen de acá:
    → **DMA descartado.** Ajustes revertidos (costaban CPU sin beneficio).
    Nota: `dtparam` después de un `dtoverlay` se aplica a ese overlay → el bootstrap ahora usa
    `base_param()` (antes, `i2c_arm_baudrate` nunca se aplicaba).
-10. **Próximo**: `dwc_otg.speed=1` (lado USB: todo en full speed, sin transaction translator).
+10. **Próximo (a propuesta de Cristian)**: soak test realista con **WAV reales**: el engine toca
+    un set entero seguido, stream siempre abierto, sin carga artificial. Si aguanta, se avanza con
+    reglas (cero I/O pesada durante el show). Si no: `dwc_otg.speed=1` (lado USB: todo en full
+    speed, sin transaction translator).
     Si no alcanza, dos caminos:
     - **Raspberry Pi 4**: controlador USB xHCI, sin los problemas de `dwc_otg`. El código corre igual.
     - **Seguir con la 3B+ con reglas**: cero I/O pesada durante el show + soak test realista de

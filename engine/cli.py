@@ -1,6 +1,6 @@
-"""CLI de prueba de la Fase 1: reproduce un render y reporta xruns.
+"""CLI de prueba: reproduce uno o más renders seguidos (stream siempre abierto) y reporta xruns.
 
-    python -m engine.cli FILE [--device iRig] [--profile irig-mono-click] [--seconds N]
+    python -m engine.cli FILE [FILE ...] [--device iRig] [--profile irig-mono-click] [--seconds N]
 """
 import argparse
 import logging
@@ -19,7 +19,7 @@ PROFILES = {
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("file")
+    ap.add_argument("files", nargs="+")
     ap.add_argument("--device", default="iRig")
     ap.add_argument("--profile", default="irig-mono-click", choices=PROFILES)
     ap.add_argument("--seconds", type=float, help="cortar a los N segundos (con fade)")
@@ -28,8 +28,18 @@ def main():
 
     done = threading.Event()
     player = Player(args.device, PROFILES[args.profile])
-    player.on_end = done.set
-    player.play(args.file)
+    pending = list(args.files)
+
+    def next_song():
+        if not pending:
+            done.set()
+            return
+        path = pending.pop(0)
+        print(f"== {time.strftime('%H:%M:%S')} ▶ {os.path.basename(path)}", flush=True)
+        player.play(path)
+
+    player.on_end = next_song
+    next_song()
     t0 = last = time.monotonic()
     while not done.wait(1):
         elapsed = time.monotonic() - t0
