@@ -59,7 +59,7 @@ def _put(q, item, stop_evt):
 
 
 class Player:
-    def __init__(self, device_name, matrix, latency=0.1, buffer_seconds=3.0):
+    def __init__(self, device_name, matrix, latency=0.1, buffer_seconds=20.0):
         self.matrix = np.asarray(matrix, dtype=np.float32)  # salidas × 4
         self.outputs = self.matrix.shape[0]
         self.buffer_blocks = int(buffer_seconds * SAMPLERATE / BLOCK)

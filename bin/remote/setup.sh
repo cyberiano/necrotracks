@@ -32,6 +32,15 @@ cat > /etc/NetworkManager/conf.d/necrotracks-wifi.conf << 'CONF'
 wifi.powersave = 2
 CONF
 
+log "Logs del sistema en RAM (durante el show no se escribe en la SD)"
+install -d /etc/systemd/journald.conf.d
+cat > /etc/systemd/journald.conf.d/necrotracks.conf << 'CONF'
+[Journal]
+Storage=volatile
+RuntimeMaxUse=32M
+CONF
+systemctl restart systemd-journald
+
 log "Código en $APP, datos en $DATA"
 install -d -o "$NT_USER" -g "$NT_USER" "$APP" "$DATA" "$DATA/library" "$DATA/setlists" "$DATA/profiles"
 if [ -d "$APP/.git" ]; then
