@@ -109,8 +109,8 @@ setInterval(renderConn, 2000);
 // ── Ruteo ────────────────────────────────────────────────────────────────────
 
 const views = {show: viewShow, setlists: viewSetlists, setlist: viewSetlist, biblioteca: viewLibrary,
-  ajustes: viewSettings, controles: viewSettings};
-const TAB_OF = {setlist: 'setlists', controles: 'ajustes'};
+  ajustes: viewSettings, controles: viewSettings, imprimir: viewPrint};
+const TAB_OF = {setlist: 'setlists', controles: 'ajustes', imprimir: 'setlists'};
 let lastHash = location.hash, skipHash = false;
 
 function route() {
@@ -453,6 +453,7 @@ function viewSetlist(slug) {
         <div id="ed-problems">${problemsHtml(sl.problems)}</div>
         <div class="actions">
           <button id="ed-save" class="btn primary">Guardar</button>
+          <a class="btn" href="#imprimir/${encodeURIComponent(slug)}">${ic('print')}Imprimir</a>
           <span id="ed-dirty" class="muted small"></span>
           <span class="spacer"></span>
           <button id="ed-del" class="btn danger">${ic('trash')}Borrar set list</button>
@@ -559,6 +560,130 @@ function viewSetlist(slug) {
 
   load();
   return {dirty, onLive: renderLoaded};
+}
+
+// ── Set list imprimible ──────────────────────────────────────────────────────
+// Dos hojas: "piso" (número y nombre lo más grande que entre, para leerla parado) y "técnica"
+// (duración, bloque y qué hace al terminar). El PDF lo hace el navegador: Imprimir → Guardar como PDF.
+// Y abajo, la lista en texto para mandar por WhatsApp (seleccionable: la web va por HTTP y el
+// "Compartir" del iPhone y el portapapeles moderno piden HTTPS).
+
+function viewPrint(slug) {
+  const v = $('#view');
+  v.innerHTML = '<div class="wrap"><section class="muted">Cargando…</section></div>';
+  let sl = null, mode = 'piso';
+
+  const song = it => sl.songs[it.song] || {};
+  const songName = it => song(it).name || it.song;
+  const songDur = it => song(it).duration || 0;
+
+  // Las canciones con su bloque como encabezado, en el orden de la set list
+  function lines() {
+    const out = [];
+    let block;
+    sl.items.forEach((it, i) => {
+      if (it.block !== block) { block = it.block; if (block) out.push({block}); }
+      out.push({it, i});
+    });
+    return out;
+  }
+
+  function head() {
+    const total = sl.items.reduce((a, it) => a + songDur(it), 0);
+    return `<header class="sheet-head">
+      <svg class="emblem" aria-hidden="true"><use href="#emblem"/></svg>
+      <div><h1>${esc(sl.name)}</h1>
+        <p class="meta">${plural(sl.items.length, 'canción', 'canciones')} · ${mmss(total)}</p></div>
+    </header>`;
+  }
+
+  function floorSheet() {
+    // Que entre en una hoja: con muchas canciones, más chico
+    const size = sl.items.length > 16 ? 24 : sl.items.length > 12 ? 30 : sl.items.length > 8 ? 34 : 40;
+    return `<div class="sheet floor">${head()}
+      <ol class="songs" style="font-size:${size}px">${lines().map(l => l.block !== undefined
+        ? `<li class="blk">${esc(l.block)}</li>`
+        : `<li><span class="n">${pad2(l.i + 1)}</span><span class="t">${esc(songName(l.it))}</span></li>`).join('')}</ol>
+    </div>`;
+  }
+
+  function techSheet() {
+    const total = sl.items.reduce((a, it) => a + songDur(it), 0);
+    return `<div class="sheet">${head()}
+      <table><thead><tr><th>#</th><th>Canción</th><th>Bloque</th><th>Dura</th><th>Al terminar</th></tr></thead>
+        <tbody>${sl.items.map((it, i) => `<tr>
+          <td class="n">${pad2(i + 1)}</td>
+          <td><strong>${esc(songName(it))}</strong></td>
+          <td>${esc(it.block || '—')}</td>
+          <td class="dur">${mmss(songDur(it))}</td>
+          <td class="beh">${esc(describe(it))}</td></tr>`).join('')}</tbody></table>
+      <div class="sheet-foot"><span>${plural(sl.items.length, 'canción', 'canciones')}</span>
+        <span>Duración total ${mmss(total)}</span><span>Necrotracks</span></div>
+    </div>`;
+  }
+
+  function asText() {
+    const total = sl.items.reduce((a, it) => a + songDur(it), 0);
+    const rows = lines().map(l => l.block !== undefined
+      ? `\n— ${l.block} —`
+      : `${pad2(l.i + 1)}. ${songName(l.it)} (${mmss(songDur(l.it))})`);
+    return `${sl.name.toUpperCase()}\n${rows.join('\n')}\n\n${sl.items.length} canciones · ${mmss(total)}`.trim();
+  }
+
+  function render() {
+    v.innerHTML = `
+      <div class="wrap"><section>
+        <a href="#setlist/${encodeURIComponent(slug)}" class="back">${ic('back')}Volver a la set list</a>
+        <div class="sheet-actions">
+          <div class="seg">
+            <button data-mode="piso" class="${mode === 'piso' ? 'on' : ''}">Para el piso</button>
+            <button data-mode="tecnica" class="${mode === 'tecnica' ? 'on' : ''}">Técnica</button>
+          </div>
+          <button id="pr-print" class="btn primary">${ic('print')}Imprimir o guardar PDF</button>
+        </div>
+        ${mode === 'piso' ? floorSheet() : techSheet()}
+        <div class="textbox">
+          <h2 class="title">Para mandar por mensaje</h2>
+          <textarea id="pr-text" readonly>${esc(asText())}</textarea>
+          <div class="actions"><button id="pr-copy" class="btn">${ic('copy')}Copiar</button>
+            <span class="muted small">Si no copia, tocá el texto, seleccioná todo y copiá a mano.</span></div>
+        </div>
+        <p class="fine">En la Mac: Imprimir → PDF → Guardar como PDF. En el iPhone: Imprimir → pellizcá para
+          abrir la vista previa → Compartir → Guardar en Archivos. Se imprime solo la hoja, sin los botones.</p>
+      </section></div>`;
+  }
+
+  v.addEventListener('click', async e => {
+    const b = e.target.closest('button');
+    if (!b || !sl) return;
+    if (b.dataset.mode) { mode = b.dataset.mode; return render(); }
+    if (b.id === 'pr-print') return window.print();
+    if (b.id === 'pr-copy') {
+      const text = asText();
+      let ok = false;
+      try {
+        if (navigator.clipboard && window.isSecureContext) { await navigator.clipboard.writeText(text); ok = true; }
+      } catch { ok = false; }
+      if (!ok) {  // por HTTP no hay portapapeles moderno: a la vieja usanza
+        const ta = $('#pr-text');
+        ta.focus();
+        ta.setSelectionRange(0, ta.value.length);
+        try { ok = document.execCommand('copy'); } catch { ok = false; }
+      }
+      toast(ok ? 'Copiada' : 'No se pudo copiar: seleccioná el texto y copialo a mano', ok ? 'ok' : 'bad');
+    }
+  });
+
+  (async function load() {
+    try { sl = await api('GET', '/api/setlists/' + encodeURIComponent(slug)); }
+    catch (e) {
+      v.innerHTML = `<div class="wrap"><section><a href="#setlists" class="back">${ic('back')}Set lists</a>
+        <p class="bad-text">${esc(e.message)}</p></section></div>`;
+      return;
+    }
+    render();
+  })();
+  return {};
 }
 
 // ── Biblioteca ───────────────────────────────────────────────────────────────

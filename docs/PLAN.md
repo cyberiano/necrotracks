@@ -248,6 +248,14 @@ Degrada bien: si se corta el WS, muestra "desconectado" y no bloquea nada.
   sin querer en el escenario deja la pantalla corrida. Y **instalada en el inicio del iPhone no hay forma de
   recargar** (no hay barra ni tirar hacia abajo): va un botón en la barra, más un refresco automático al volver
   a la app (por ejemplo, después de subir una canción desde la Mac).
+- **Set list imprimible** (2026-09-11, pedido de Cristian): botón Imprimir en el editor → `#imprimir/SLUG`, con dos
+  hojas: **"para el piso"** (número y nombre lo más grande que entre —el tamaño baja según cuántas canciones
+  haya—, con los bloques marcados) y **"técnica"** (duración, bloque, qué hace al terminar y total). **El PDF lo
+  hace el navegador** (Imprimir → Guardar como PDF): nada de generarlo en la Pi, que sería una dependencia pesada
+  para algo que el navegador ya hace. La hoja se dibuja en pantalla igual que sale en papel (blanca y negra) y
+  `@media print` solo saca lo que la rodea. Abajo, la lista **en texto para mandar por mensaje**.
+  Ojo: **la web va por HTTP**, así que no hay `navigator.share` ni portapapeles moderno (piden HTTPS): el texto
+  va en un cuadro seleccionable y el botón Copiar cae a `execCommand`.
 - Falta: elegir el perfil de hardware (hoy solo se ve cuál está activo en `/api/info`).
 
 ### Fase 4 — Controles físicos
