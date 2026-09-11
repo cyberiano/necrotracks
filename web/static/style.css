@@ -82,6 +82,10 @@ td.acts button { padding: .3rem .55rem; }
 .block-tool { margin: 1rem 0; }
 .block-tool summary { cursor: pointer; color: var(--muted); }
 
+/* Controles */
+.controls td.acts { width: 1%; }
+.controls td div + div { margin-top: .2rem; }
+
 /* Show Mode */
 .show { max-width: 720px; }
 .sh-top { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; }

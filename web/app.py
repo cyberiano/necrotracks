@@ -67,7 +67,7 @@ def incoming_dir():
 
 # ── Engine ─────────────────────────────────────────────────────────────────────
 
-async def engine_request(req):
+async def engine_request(req, timeout=3):
     try:
         reader, writer = await asyncio.open_unix_connection(str(daemon.socket_path()))
     except OSError:
@@ -75,7 +75,7 @@ async def engine_request(req):
     try:
         writer.write((json.dumps(req) + "\n").encode())
         await writer.drain()
-        line = await asyncio.wait_for(reader.readline(), 3)
+        line = await asyncio.wait_for(reader.readline(), timeout)
     except (OSError, asyncio.TimeoutError):
         line = b""
     finally:
@@ -148,6 +148,31 @@ async def post_cmd(body: Cmd):
     if not resp.get("ok"):
         raise HTTPException(409, resp.get("error") or "El engine rechazó el comando")
     return resp
+
+
+class ActionIn(BaseModel):
+    action: str
+
+
+def _ok(resp):
+    if not resp.get("ok"):
+        raise HTTPException(409, resp.get("error") or "El engine rechazó el pedido")
+    return resp
+
+
+@app.get("/api/controls")
+async def get_controls():
+    return _ok(await engine_request({"cmd": "controls"}))["controls"]
+
+
+@app.post("/api/learn")
+async def post_learn(body: ActionIn):
+    return _ok(await engine_request({"cmd": "learn", "action": body.action}, timeout=daemon.LEARN_TIMEOUT + 5))
+
+
+@app.post("/api/unlearn")
+async def post_unlearn(body: ActionIn):
+    return _ok(await engine_request({"cmd": "unlearn", "action": body.action}))
 
 
 @app.get("/api/info")

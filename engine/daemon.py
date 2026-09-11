@@ -1,4 +1,4 @@
-"""Engine de Necrotracks como servicio: dueño del audio y del show.
+"""Engine de Necrotracks como servicio: dueño del audio, del show y de los controles MIDI.
 
 Abre el device una sola vez y lo mantiene abierto (ver docs/PLAN.md). Expone un socket unix
 en RAM (store.RUN/engine.sock) con JSON por línea, que usan la web, la pedalera, el OLED y el CLI:
@@ -8,9 +8,12 @@ en RAM (store.RUN/engine.sock) con JSON por línea, que usan la web, la pedalera
     → {"cmd": "load", "setlist": "show-necropolis"}   solo con la reproducción parada
     → {"cmd": "state"}           ← {"ok": true, "state": {...}}
     → {"cmd": "subscribe"}       ← {"state": {...}} en cada cambio y cada 0,5 s mientras suena
+    → {"cmd": "controls"}        ← {"ok": true, "controls": {...}}  mapa MIDI y última pisada
+    → {"cmd": "learn", "action": "next"}   espera la próxima pisada (hasta LEARN_TIMEOUT s)
+    → {"cmd": "unlearn", "action": "next"}
 
 Cada pedido responde {"ok": true} o {"ok": false, "error": "..."}. El engine no depende de
-ningún cliente: si la web se cae, el show sigue.
+ningún cliente: si la web se cae, el show sigue, y los footswitches también.
 """
 import asyncio
 import json
@@ -18,15 +21,18 @@ import logging
 import os
 import sys
 
-from . import library, profiles, setlists, store
+from . import controls, library, profiles, setlists, store
 from .show import Show
 
 log = logging.getLogger("necrotracks.engine")
 
-DEFAULT_CONFIG = {"profile": profiles.DEFAULT, "setlist": None}
+DEFAULT_CONFIG = {"profile": profiles.DEFAULT, "setlist": None,
+                  "midi": {"port": controls.DEFAULT_PORT, "map": controls.DEFAULT_MAP}}
 EMPTY_STATE = {"setlist": None, "slug": None, "state": "stopped", "index": 0, "count": 0, "song": None, "block": None,
                "behavior": None, "next": None, "position": 0.0, "duration": 0.0, "wait_remaining": None}
 SHOW_COMMANDS = {"play", "pause", "play_pause", "stop", "next", "prev"}
+LEARN_TIMEOUT = 15
+MIDI_RETRY = 5  # segundos entre intentos de abrir el puerto MIDI
 
 
 class EngineError(Exception):
@@ -54,13 +60,18 @@ class Engine:
         self.loop = None
         self.subscribers = set()
         self._writers = set()
+        self.controls = controls.Controls(self.config["midi"]["map"], self._control_action)
+        self.midi_port = None  # lo fija main(); en los tests no se abre MIDI
 
     def state(self):
         return self.show.snapshot() if self.show else dict(EMPTY_STATE)
 
-    def load(self, name):
+    def _require_stopped(self, what):
         if self.show and self.show.state != "stopped":
-            raise EngineError("Frená la reproducción antes de cambiar de set list")
+            raise EngineError(f"Frená la reproducción antes de {what}")
+
+    def load(self, name):
+        self._require_stopped("cambiar de set list")
         setlist = setlists.get(name)
         if setlist is None:
             raise EngineError(f"No existe la set list '{name}'")
@@ -91,7 +102,43 @@ class Engine:
                 raise EngineError("No hay set list cargada")
             self.show.send(cmd, req.get("index") if cmd == "goto" else None)
             return {"ok": True}
+        if cmd == "controls":
+            return {"ok": True, "controls": self.controls.snapshot()}
+        if cmd == "unlearn":
+            self._require_stopped("cambiar los controles")
+            self.controls.forget(req.get("action"))
+            self._save_midi()
+            return {"ok": True}
         raise EngineError(f"Comando desconocido: {cmd!r}")
+
+    async def learn(self, action):
+        """Asigna a `action` el próximo control que se pise."""
+        if action not in controls.ACTIONS:
+            raise EngineError(f"Acción desconocida: {action!r}")
+        self._require_stopped("cambiar los controles")
+        if not self.controls.connected and self.midi_port:
+            raise EngineError("No hay pedalera MIDI conectada")
+        future = self.loop.create_future()
+        self.controls.learn(action, lambda key: self.loop.call_soon_threadsafe(
+            lambda: future.done() or future.set_result(key)))
+        try:
+            key = await asyncio.wait_for(future, LEARN_TIMEOUT)
+        except asyncio.TimeoutError:
+            self.controls.cancel_learn()
+            raise EngineError("No llegó ninguna pisada: probá de nuevo") from None
+        self._save_midi()
+        log.info("MIDI learn: %s → %s", controls.label(key), action)
+        return {"ok": True, "control": key, "label": controls.label(key)}
+
+    def _save_midi(self):
+        self.config["midi"] = {**self.config["midi"], "map": self.controls.mapping()}
+        store.write_json(config_path(), self.config)
+
+    # Llega desde el hilo de MIDI: el show encola el comando.
+    def _control_action(self, action):
+        log.info("pedal: %s", action)
+        if self.show:
+            self.show.send(action)
 
     # Los cambios llegan desde el hilo del show: se pasan al loop de asyncio.
     def _on_change(self, snapshot):
@@ -111,6 +158,21 @@ class Engine:
             if self.show and self.show.state in ("playing", "waiting"):
                 self._broadcast(self.show.snapshot())
 
+    async def _midi_watch(self):
+        """Abre el puerto MIDI y, si todavía no está (otra pedalera, enchufada después), reintenta."""
+        warned = False
+        while not self.controls.connected:
+            try:
+                if self.controls.open(self.midi_port):
+                    log.info("MIDI: escuchando %s", self.controls.port_name)
+                    return
+            except Exception as e:  # sin MIDI el show sigue: se maneja por la web
+                log.warning("MIDI: no se pudo abrir %r: %s", self.midi_port, e)
+            if not warned:
+                log.warning("MIDI: no hay un puerto que contenga %r; reintento cada %d s", self.midi_port, MIDI_RETRY)
+                warned = True
+            await asyncio.sleep(MIDI_RETRY)
+
     async def _client(self, reader, writer):
         self._writers.add(writer)
         try:
@@ -120,7 +182,7 @@ class Engine:
                     if req.get("cmd") == "subscribe":
                         await self._stream(writer)
                         return
-                    resp = self.handle(req)
+                    resp = await self.learn(req.get("action")) if req.get("cmd") == "learn" else self.handle(req)
                 except (EngineError, ValueError, TypeError, AttributeError) as e:
                     resp = {"ok": False, "error": str(e)}
                 writer.write((json.dumps(resp, ensure_ascii=False) + "\n").encode())
@@ -148,7 +210,9 @@ class Engine:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.unlink(missing_ok=True)
         server = await asyncio.start_unix_server(self._client, path=str(path))
-        ticker = asyncio.create_task(self._ticker())
+        tasks = [asyncio.create_task(self._ticker())]
+        if self.midi_port:
+            tasks.append(asyncio.create_task(self._midi_watch()))
         log.info("escuchando en %s", path)
         if ready:
             ready.set()
@@ -157,7 +221,8 @@ class Engine:
             # clientes antes de dejar correr este finally, y un suscriptor no se va nunca.
             await asyncio.Future()
         finally:
-            ticker.cancel()
+            for task in tasks:
+                task.cancel()
             for writer in list(self._writers):
                 writer.close()
             server.close()
@@ -181,6 +246,7 @@ def main():
     player.on_device_lost = lambda: os._exit(3)  # systemd lo reinicia; al volver, recupera la set list y el cursor
     log.info("audio abierto: perfil %s", config["profile"])
     engine = Engine(player, config)
+    engine.midi_port = config["midi"]["port"]
     if config["setlist"]:
         try:
             engine.load(config["setlist"])

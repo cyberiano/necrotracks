@@ -102,10 +102,11 @@ setInterval(renderConn, 2000);
 
 // ── Ruteo ────────────────────────────────────────────────────────────────────
 
-const views = {show: viewShow, setlists: viewSetlists, setlist: viewSetlist, biblioteca: viewLibrary};
+const views = {show: viewShow, setlists: viewSetlists, setlist: viewSetlist, biblioteca: viewLibrary, controles: viewControls};
 let lastHash = location.hash, skipHash = false;
 
 function route() {
+  current?.leave?.();
   const [name, arg] = location.hash.slice(1).split('/');
   const fn = views[name] || viewShow;
   document.body.classList.toggle('show-mode', fn === viewShow);
@@ -575,6 +576,71 @@ function viewLibrary() {
   load();
   syncBusy();
   return {onLive: syncBusy};
+}
+
+// ── Controles MIDI ───────────────────────────────────────────────────────────
+
+function viewControls() {
+  const v = $('#view');
+  v.innerHTML = `
+    <section>
+      <h2>Controles MIDI</h2>
+      <p id="ct-port" class="muted">Cargando…</p>
+      <div class="table-wrap"><table class="controls">
+        <thead><tr><th>Acción</th><th>Controles asignados</th><th></th></tr></thead>
+        <tbody id="ct-rows"></tbody>
+      </table></div>
+      <p id="ct-last" class="note">Pisá un footswitch para ver qué manda.</p>
+      <p class="muted small">Aprender: tocá el botón y pisá el footswitch dentro de los 15 s. Un footswitch dispara una sola
+        acción; una acción puede tener varios (por ejemplo, el mismo footswitch en modo normal y en modo stomp).
+        El pedal de expresión se ignora. Anterior y Siguiente funcionan solo con la reproducción parada.</p>
+    </section>`;
+  let data = null, learning = null;
+
+  async function load() {
+    try { data = await api('GET', '/api/controls'); } catch (e) { $('#ct-port').textContent = e.message; return; }
+    render();
+  }
+
+  function render() {
+    if (!data) return;
+    const locked = learning || sounding();
+    $('#ct-port').innerHTML = data.port ? `Escuchando <strong>${esc(data.port)}</strong>`
+      : '<span class="bad-text">No hay pedalera MIDI conectada</span>';
+    $('#ct-rows').innerHTML = Object.entries(data.actions).map(([a, name]) => {
+      const keys = Object.keys(data.map).filter(k => data.map[k] === a);
+      return `<tr><td><strong>${esc(name)}</strong></td>
+        <td>${keys.map(k => `<div>${esc(data.labels[k])}</div>`).join('') || '<span class="muted">—</span>'}</td>
+        <td class="acts"><button data-learn="${a}" class="${learning === a ? 'primary' : ''}" ${locked ? 'disabled' : ''}>${learning === a ? 'Pisá el footswitch…' : 'Aprender'}</button>
+          <button data-forget="${a}" ${keys.length && !locked ? '' : 'disabled'}>Quitar</button></td></tr>`;
+    }).join('');
+    const l = data.last;
+    $('#ct-last').innerHTML = l
+      ? `Última pisada: <strong>${esc(l.label)}</strong> → ${l.learned ? 'aprendida' : l.action ? esc(data.actions[l.action]) : '<span class="muted">sin acción</span>'}
+         <span class="muted small">(hace ${l.ago < 60 ? Math.round(l.ago) + ' s' : mmss(l.ago)})</span>`
+      : 'Pisá un footswitch para ver qué manda.';
+  }
+
+  v.addEventListener('click', async e => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    if (b.dataset.learn) {
+      learning = b.dataset.learn; render();
+      try {
+        const r = await api('POST', '/api/learn', {action: learning});
+        toast(`${data.actions[learning]} ← ${r.label}`);
+      } catch (err) { toast(err.message, 'bad'); }
+      learning = null;
+      load();
+    } else if (b.dataset.forget) {
+      try { await api('POST', '/api/unlearn', {action: b.dataset.forget}); } catch (err) { toast(err.message, 'bad'); }
+      load();
+    }
+  });
+
+  load();
+  const timer = setInterval(load, 1000);
+  return {onLive: render, leave: () => clearInterval(timer)};
 }
 
 // ── Arranque ─────────────────────────────────────────────────────────────────
