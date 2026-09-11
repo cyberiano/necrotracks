@@ -248,5 +248,12 @@ Reglas que salen de acá:
    al rato queda apagado. **No se recupera al cortar la carga**: solo desenchufando.
    Topología: iRig USB 1.1 (12M) detrás del hub interno USB 2.0, junto al lan78xx.
    Controlador `dwc_otg`, `fiq_fsm_mask=15`, `speed=-1`.
-7. **Pendiente**: ¿lo cuelga cualquier carga fuerte (CPU) o solo la escritura a la SD?
-   Después, probar `dwc_otg.speed=1` (todo el USB en full speed, sin transaction translator).
+7. **Carga solo de CPU** (4 núcleos al 98 %, sin tocar la SD, 51–57 °C, sin throttling):
+   `aplay` con **0 underruns** en ~5 min, pero el vúmetro terminó al máximo con rojo y el tono
+   por parlante "un poco áspero". **No se recuperó al cortar la carga.** → No es solo la SD:
+   **cualquier carga fuerte puede trabar al iRig, incluso sin cortes de audio.**
+   (Duda menor: el parlante se conectó durante la prueba.)
+   ⚠️ Trabado saca basura cerca de full scale: en un PA es peligroso. Hay que resolverlo, no evitarlo.
+8. **Próximo**: `dwc_otg.speed=1` en cmdline (todo el USB en full speed, sin transaction
+   translator; Ethernet queda a 12 Mbit/s, irrelevante en el show). Si no alcanza: 16-bit.
+   Si nada alcanza: **Raspberry Pi 4** (controlador USB xHCI, sin los problemas de `dwc_otg`).
