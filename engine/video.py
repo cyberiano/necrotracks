@@ -1,10 +1,13 @@
-"""Video por HDMI: un mpv que queda abierto mostrando el logo y, mientras suena una canción con
-video, lo reproduce sincronizado con el audio.
+"""Video por HDMI: un mpv que queda abierto mostrando la pantalla de reposo (el logo, o la imagen o el
+video que se haya subido) y, mientras suena una canción con video, lo reproduce sincronizado con el audio.
 
 mpv corre aparte, con menos prioridad que el engine, y se maneja por su socket JSON. Si se cae,
 se vuelve a levantar; el audio no depende de él. Probado en la 3B+ (ver docs/PLAN.md): con
 --vo=gpu --gpu-context=drm --hwdec=v4l2m2m decodifica por hardware y muestra por una capa de la
 pantalla, sin copias por la CPU (1080p30 a ~16 % de CPU).
+
+Qué se muestra, en orden: el video de la canción que suena; el patrón de ajuste (si se pidió, parado);
+si no, la pantalla de reposo. El reposo tiene su propio encaje (escala, posición), aparte del de los videos.
 
 El reloj es el del audio. Cada segundo se compara la posición del video con la del engine (menos
 la latencia de la salida): si se alejó más de SEEK, salta; si se alejó más de TOLERANCE, ajusta
@@ -23,19 +26,22 @@ from pathlib import Path
 
 log = logging.getLogger(__name__)
 
-# Capas de la pantalla: en la Pi el video decodificado va en la primaria y lo que dibuja mpv (logo, fondo)
-# en la de arriba; con el orden por defecto de mpv el video queda tapado (pantalla negra con audio).
-# --background=color: por defecto mpv dibuja un damero detrás de lo transparente. Negro para el logo;
-# con un video, la capa de arriba se vuelve transparente (ver VIDEO_OPTS) para que se vea el de abajo.
+# Capas de la pantalla: en la Pi el video decodificado va en la primaria y lo que dibuja mpv (imágenes,
+# fondo) en la de arriba; con el orden por defecto de mpv el video queda tapado (pantalla negra con audio).
+# --background=color: por defecto mpv dibuja un damero detrás de lo transparente. Negro para las imágenes;
+# con un video, la capa de arriba se vuelve transparente (VIDEO_BG) para que se vea el de abajo.
 MPV_ARGS = ["--vo=gpu", "--gpu-context=drm", "--hwdec=v4l2m2m", "--no-audio", "--idle=yes", "--force-window=yes",
             "--drm-draw-plane=overlay", "--drm-drmprime-video-plane=primary",
             "--background=color", "--background-color=#000000",
             "--keep-open=yes", "--image-display-duration=inf", "--osd-level=0", "--no-osc",
             "--no-input-default-bindings", "--really-quiet"]
-LOGO_ZOOM = -0.9  # log2 del tamaño: el logo a ~54 % del ancho, centrado sobre negro
 VIDEO_BG = "background-color=#00000000"  # con un video, la capa de mpv transparente (solo para ese archivo)
+IDLE_DIR = "reposo"  # en los datos: la imagen o el video de reposo que se subió (uno solo)
+IMAGE_EXT = {".png", ".jpg", ".jpeg", ".webp"}
+VIDEO_EXT = {".mp4", ".mov", ".m4v"}
 FIT_MODES = {"fit": "Ajustar", "fill": "Llenar", "stretch": "Estirar"}
 FIT_DEFAULT = {"mode": "fit", "scale": 100, "x": 0.0, "y": 0.0}
+IDLE_FIT_DEFAULT = {"mode": "fit", "scale": 54, "x": 0.0, "y": 0.0}  # el logo a ~54 % del ancho, centrado
 # Patrón de ajuste 16:9: grilla, zona segura del 5 % en rojo, borde blanco (tiene que verse entero) y cruz.
 PATTERN = ("color=c=0x111111:s=1920x1080,drawgrid=w=192:h=108:t=2:c=0x3a3a3a,"
            "drawbox=x=96:y=54:w=1728:h=972:c=0xc1121f:t=6,drawbox=x=0:y=0:w=1920:h=1080:c=white:t=12,"
@@ -50,6 +56,7 @@ LOAD_LEAD = 0.33  # mpv tarda ~330 ms en cargar y arrancar un video (medido en l
 SYNC_EVERY = 1.0
 STEP = 0.25
 RETRY = 10  # segundos entre intentos de levantar mpv (p. ej. sin pantalla conectada)
+PLYMOUTH_WAIT = 60  # segundos, como mucho, esperando que termine la pantalla de arranque
 
 
 def hdmi_modes(base="/sys/class/drm"):
@@ -88,9 +95,9 @@ def pick_mode(modes, wanted="auto"):
     return preferred or max(usable, key=area)
 
 
-def check_fit(fit):
-    """Valida y normaliza el encaje del video: modo, escala (%) y posición (% del tamaño del video)."""
-    f = {**FIT_DEFAULT, **(fit or {})}
+def check_fit(fit, default=FIT_DEFAULT):
+    """Valida y normaliza un encaje: modo, escala (%) y posición (% del tamaño de la imagen)."""
+    f = {**default, **(fit or {})}
     if f["mode"] not in FIT_MODES:
         raise ValueError(f"Encaje desconocido: {f['mode']}")
     scale, x, y = float(f["scale"]), float(f["x"]), float(f["y"])
@@ -102,7 +109,7 @@ def check_fit(fit):
 
 
 def fit_props(fit):
-    """Propiedades de mpv para el encaje. Valen solo para el video o el patrón: el logo tiene las suyas."""
+    """Propiedades de mpv para un encaje. Se pasan al cargar cada archivo (mpv las deshace al cambiar)."""
     f = check_fit(fit)
     return {"keepaspect": f["mode"] != "stretch", "panscan": 1.0 if f["mode"] == "fill" else 0.0,
             "video-zoom": round(math.log2(f["scale"] / 100), 4),
@@ -112,6 +119,16 @@ def fit_props(fit):
 def fit_opts(fit):
     return ",".join(f"{k}={('yes' if v else 'no') if isinstance(v, bool) else format(v, 'g')}"
                     for k, v in fit_props(fit).items())
+
+
+def idle_file(data_dir, default_logo):
+    """La pantalla de reposo: la imagen o el video subido a data/reposo, o el logo; None si no hay nada."""
+    d = Path(data_dir) / IDLE_DIR
+    if d.is_dir():
+        for p in sorted(d.iterdir()):
+            if not p.name.startswith(".") and p.suffix.lower() in IMAGE_EXT | VIDEO_EXT:
+                return p
+    return Path(default_logo) if Path(default_logo).exists() else None
 
 
 def make_pattern(out):
@@ -124,19 +141,23 @@ def make_pattern(out):
         return None
 
 
-def flatten(logo, out):
-    """El logo aplanado sobre negro: así no depende de cómo mpv pinta lo transparente (y una captura
-    del HDMI lo puede confirmar). Si ffmpeg falla, queda el original."""
+def flatten(image, out):
+    """La imagen aplanada sobre negro: así no depende de cómo mpv pinta lo transparente (y una captura
+    del HDMI lo puede confirmar). Si ffmpeg falla, queda la original."""
     try:
         size = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height",
-                               "-of", "csv=p=0:s=x", str(logo)], check=True, capture_output=True, text=True, timeout=30)
-        subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(logo), "-filter_complex",
+                               "-of", "csv=p=0:s=x", str(image)], check=True, capture_output=True, text=True, timeout=30)
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(image), "-filter_complex",
                         f"color=c=black:s={size.stdout.strip()}[bg];[bg][0:v]overlay=shortest=1,format=rgb24",
                         "-frames:v", "1", str(out)], check=True, capture_output=True, timeout=30)
         return Path(out)
     except (OSError, subprocess.SubprocessError) as e:
-        log.warning("video: no se pudo aplanar el logo (%s): va el original", e)
-        return Path(logo)
+        log.warning("video: no se pudo aplanar %s (%s): va la original", image, e)
+        return Path(image)
+
+
+def plymouth_running():
+    return subprocess.run(["pgrep", "-x", "plymouthd"], capture_output=True).returncode == 0
 
 
 class Mpv:
@@ -188,19 +209,22 @@ class Mpv:
 
 
 class Video:
-    def __init__(self, get_state, video_for, logo, delay=0.0, mpv=None, clock=time.monotonic, cache_dir=None,
-                 fit=None):
+    def __init__(self, get_state, video_for, idle, delay=0.0, mpv=None, clock=time.monotonic, cache_dir=None,
+                 fit=None, idle_fit=None):
         self.get_state = get_state  # → estado del engine (el mismo que ve la web)
         self.video_for = video_for  # slug → ruta del video, o None
-        self.logo = Path(logo)
-        self.cache_dir = cache_dir  # dónde dejar el logo aplanado y el patrón (RAM); None = sin eso
+        self.idle = idle  # () → ruta de la pantalla de reposo (imagen o video), o None: negro
+        self.cache_dir = cache_dir  # dónde dejar imágenes aplanadas y el patrón (RAM); None = sin eso
         self.fit = check_fit(fit)
+        self.idle_fit = check_fit(idle_fit, IDLE_FIT_DEFAULT)
         self.pattern = None  # ruta del patrón de ajuste (lo genera _run)
-        self.pattern_on = False  # mostrarlo en vez del logo (solo parado; se apaga al sonar)
+        self.pattern_on = False  # mostrarlo en vez del reposo (solo parado; se apaga al sonar)
         self.delay = delay  # latencia de la salida de audio: lo que suena va atrasado respecto de position
         self.mpv = mpv
         self.clock = clock
-        self.loaded = False  # ruta del video cargado; None = logo; False = nada todavía
+        # Lo que hay en pantalla: ("video", ruta) | ("pattern", ruta) | ("idle", ruta, mtime) | None (negro);
+        # False = nada todavía.
+        self.loaded = False
         self.paused = None
         self.speed = 1.0
         self._last_sync = 0.0
@@ -209,8 +233,12 @@ class Video:
         threading.Thread(target=self._run, daemon=True, name="video").start()
 
     def _run(self):
-        if self.cache_dir and self.logo.exists():
-            self.logo = flatten(self.logo, Path(self.cache_dir) / "video-logo-plano.png")
+        # Si mpv toma la pantalla mientras está la de arranque (Plymouth), al cerrarse ésta deja todo en
+        # negro y una imagen quieta no se vuelve a dibujar: se espera a que termine.
+        for _ in range(PLYMOUTH_WAIT * 2):
+            if not plymouth_running():
+                break
+            time.sleep(0.5)
         if self.cache_dir:
             self.pattern = make_pattern(Path(self.cache_dir) / "patron-16x9.png")
         warned = False
@@ -245,35 +273,48 @@ class Video:
                 pass
         return self.mpv.alive()
 
+    def _want(self, s):
+        """Qué tiene que estar en pantalla según el estado del engine."""
+        if s["state"] in ("playing", "paused"):
+            self.pattern_on = False  # el patrón es para ajustar con todo parado
+            path = self.video_for(s["song_slug"]) if s.get("song_slug") else None
+            if path:
+                return ("video", str(path))
+        elif self.pattern_on and self.pattern:
+            return ("pattern", str(self.pattern))
+        idle = self.idle() if self.idle else None
+        try:
+            return ("idle", str(idle), Path(idle).stat().st_mtime) if idle else None
+        except OSError:
+            return None
+
     def step(self, s):
         """Lleva mpv a lo que corresponde según el estado del engine."""
-        sounding = s["state"] in ("playing", "paused")
-        if sounding:
-            self.pattern_on = False  # el patrón es para ajustar con todo parado
-        if sounding:
-            want = self.video_for(s["song_slug"]) if s.get("song_slug") else None
-        else:
-            want = self.pattern if self.pattern_on and self.pattern else None
+        want = self._want(s)
+        kind = want[0] if want else None
         target = round(max(0.0, s["position"] - self.delay), 3)
         paused = s["state"] == "paused"
         if want != self.loaded:
-            if want and want == self.pattern:
-                self.mpv.command("loadfile", str(want), "replace", -1, f"{fit_opts(self.fit)},{VIDEO_BG},pause=no")
-                self.paused = None
-            elif want:
+            if kind == "video":
                 start = target if paused else target + LOAD_LEAD
-                self.mpv.command("loadfile", str(want), "replace", -1,
+                self.mpv.command("loadfile", want[1], "replace", -1,
                                  f"start={start:.3f},{fit_opts(self.fit)},{VIDEO_BG},pause={'yes' if paused else 'no'}")
                 self.paused = paused
-            elif self.logo.exists():
-                self.mpv.command("loadfile", str(self.logo), "replace", -1, f"video-zoom={LOGO_ZOOM},pause=no")
+            elif kind == "pattern":
+                self.mpv.command("loadfile", want[1], "replace", -1, f"{fit_opts(self.fit)},{VIDEO_BG},pause=no")
+            elif kind == "idle" and Path(want[1]).suffix.lower() in VIDEO_EXT:
+                self.mpv.command("loadfile", want[1], "replace", -1,
+                                 f"{fit_opts(self.idle_fit)},{VIDEO_BG},loop-file=inf,pause=no")
+            elif kind == "idle":
+                self.mpv.command("loadfile", str(self._flat(Path(want[1]))), "replace", -1,
+                                 f"{fit_opts(self.idle_fit)},pause=no")
             else:
-                self.mpv.command("stop")  # sin logo: negro
+                self.mpv.command("stop")  # sin reposo: negro
             self.loaded = want
             self._set_speed(1.0)
             self._last_sync = self.clock()
             return
-        if not want or want == self.pattern:
+        if kind != "video":
             return
         if paused != self.paused:
             self.mpv.command("set_property", "pause", paused)
@@ -282,13 +323,25 @@ class Video:
             self._last_sync = self.clock()
             self._sync(target)
 
+    def _flat(self, image):
+        return flatten(image, Path(self.cache_dir) / "reposo-plano.png") if self.cache_dir else image
+
+    def _apply(self, fit):
+        for prop, value in fit_props(fit).items():
+            self.mpv.command("set_property", prop, value)
+
     def set_fit(self, fit):
-        """Nuevo encaje: queda para los próximos videos y, si hay un video o el patrón en pantalla, se aplica
-        en vivo (mpv lo deshace solo al cambiar de archivo: el logo conserva su tamaño)."""
+        """Nuevo encaje de los videos: queda para los próximos y, si hay un video o el patrón en pantalla,
+        se aplica en vivo."""
         self.fit = check_fit(fit)
-        if self.loaded:  # None = logo, False = nada todavía
-            for prop, value in fit_props(self.fit).items():
-                self.mpv.command("set_property", prop, value)
+        if self.loaded and self.loaded[0] in ("video", "pattern"):
+            self._apply(self.fit)
+
+    def set_idle_fit(self, fit):
+        """Nuevo encaje de la pantalla de reposo: si está en pantalla, se aplica en vivo."""
+        self.idle_fit = check_fit(fit, IDLE_FIT_DEFAULT)
+        if self.loaded and self.loaded[0] == "idle":
+            self._apply(self.idle_fit)
 
     def _get(self, prop):
         try:

@@ -89,6 +89,21 @@ def test_import_se_corta_si_arranca_a_sonar(tmp_path, monkeypatch):
     assert not (store.library_dir() / "uno.new").exists()
 
 
+def test_pantalla_de_reposo(client):
+    d = store.DATA / "reposo"
+    assert client.put("/api/idle/fondo.png", content=b"png").status_code == 200
+    assert [p.name for p in d.iterdir()] == ["fondo.png"]
+    assert client.put("/api/idle/otro.jpg", content=b"jpg").status_code == 200  # reemplaza: queda uno solo
+    assert [p.name for p in d.iterdir()] == ["otro.jpg"]
+    assert client.put("/api/idle/animado.gif", content=b"gif").status_code == 400
+    store.set_playing(True)
+    try:
+        assert client.put("/api/idle/fondo.png", content=b"png").status_code == 409
+    finally:
+        store.set_playing(False)
+    assert client.delete("/api/idle").status_code == 200 and not d.exists()  # vuelve al logo
+
+
 def test_engine_caido(client):
     assert client.post("/api/cmd", json={"cmd": "play"}).status_code == 503
     assert client.get("/api/state").json() == {"engine": False}

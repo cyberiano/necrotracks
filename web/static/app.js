@@ -39,14 +39,14 @@ async function cmd(c, extra = {}) {
   try { await api('POST', '/api/cmd', {cmd: c, ...extra}); return true; } catch (e) { toast(e.message, 'bad'); return false; }
 }
 
-function upload(file, onProgress) {
+function upload(file, onProgress, base = '/api/incoming/') {
   return new Promise((resolve, reject) => {
     const x = new XMLHttpRequest();
-    x.open('PUT', '/api/incoming/' + encodeURIComponent(file.name));
+    x.open('PUT', base + encodeURIComponent(file.name));
     x.upload.onprogress = e => onProgress(e.loaded / (e.total || file.size || 1));
     x.onload = () => {
-      if (x.status < 300) return resolve();
       let data = null; try { data = JSON.parse(x.responseText); } catch {}
+      if (x.status < 300) return resolve(data);
       reject(new Error(errText(data, x.status)));
     };
     x.onerror = () => reject(new Error('Se cortó la conexión mientras subía'));
@@ -663,7 +663,81 @@ function viewLibrary() {
   return {onLive: syncBusy};
 }
 
-// ── Ajustes: salida de audio y controles MIDI ────────────────────────────────
+// ── Ajustes: salida de audio, pantalla HDMI, pantalla en reposo y controles MIDI ──
+
+const FIT_HELP = {fit: 'Entero; si la pantalla no es 16:9, con franjas.',
+  fill: 'Llena la pantalla y recorta lo que sobra.', stretch: 'Llena la pantalla deformando la imagen.'};
+const signedPct = n => `${n > 0 ? '+' : ''}${n} %`;
+
+// Controles de encaje (modo, escala, posición). Se usan para los videos y para la pantalla de reposo.
+function fitHtml(p, label, {pattern = false} = {}) {
+  const modes = {fit: 'Ajustar', fill: 'Llenar', stretch: 'Estirar'};
+  return `<div class="fit">
+    <div class="field"><span>${esc(label)}</span>
+      <div class="seg">${Object.entries(modes).map(([k, l]) => `<button data-fit-group="${p}" data-fit="${k}">${l}</button>`).join('')}</div>
+      <small id="${p}-help" class="muted"></small></div>
+    <label class="field"><span>Escala <b id="${p}-scale-v"></b></span>
+      <input type="range" id="${p}-scale" data-fit-group="${p}" data-k="scale" min="50" max="120" step="1"></label>
+    <div class="grid2">
+      <label class="field"><span>Horizontal <b id="${p}-x-v"></b></span>
+        <input type="range" id="${p}-x" data-fit-group="${p}" data-k="x" min="-20" max="20" step="0.5"></label>
+      <label class="field"><span>Vertical <b id="${p}-y-v"></b></span>
+        <input type="range" id="${p}-y" data-fit-group="${p}" data-k="y" min="-20" max="20" step="0.5"></label>
+    </div>
+    <div class="actions">${pattern ? `<button id="${p}-pattern" class="btn"></button>` : ''}
+      <button id="${p}-reset" class="btn ghost">Restablecer</button></div>
+  </div>`;
+}
+
+// Cada cambio se manda en vivo (agrupado cada 150 ms) y se ve al instante en la pantalla.
+function fitControl(v, p, url, reset, {pattern = false} = {}) {
+  const st = {fit: null, patternOn: false, timer: null};
+  function render() {
+    if (!st.fit) return;
+    const locked = sounding();
+    v.querySelectorAll(`button[data-fit-group="${p}"]`).forEach(b => {
+      b.classList.toggle('on', b.dataset.fit === st.fit.mode);
+      b.disabled = locked;
+    });
+    $(`#${p}-help`).textContent = FIT_HELP[st.fit.mode];
+    for (const k of ['scale', 'x', 'y']) {
+      const input = $(`#${p}-${k}`);
+      if (document.activeElement !== input) input.value = st.fit[k];
+      input.disabled = locked;
+    }
+    $(`#${p}-scale-v`).textContent = `${st.fit.scale} %`;
+    $(`#${p}-x-v`).textContent = signedPct(st.fit.x);
+    $(`#${p}-y-v`).textContent = signedPct(st.fit.y);
+    $(`#${p}-reset`).disabled = locked;
+    if (pattern) {
+      const b = $(`#${p}-pattern`);
+      b.innerHTML = st.patternOn ? `${ic('x')}Ocultar patrón` : `${ic('show')}Mostrar patrón`;
+      b.classList.toggle('primary', st.patternOn);
+      b.disabled = locked;
+    }
+  }
+  function send(withPattern) {
+    clearTimeout(st.timer);
+    const body = withPattern === undefined ? {...st.fit} : {...st.fit, pattern: withPattern};
+    st.timer = setTimeout(async () => {
+      try { await api('POST', url, body); } catch (err) { toast(err.message, 'bad'); }
+    }, withPattern === undefined ? 150 : 0);
+  }
+  v.addEventListener('input', e => {
+    if (e.target.dataset.fitGroup !== p || !st.fit) return;
+    st.fit[e.target.dataset.k] = +e.target.value;
+    render();
+    send();
+  });
+  v.addEventListener('click', e => {
+    const b = e.target.closest('button');
+    if (!b || !st.fit) return;
+    if (b.dataset.fitGroup === p && b.dataset.fit) { st.fit.mode = b.dataset.fit; render(); send(); }
+    else if (b.id === `${p}-reset`) { st.fit = {...reset}; render(); send(); }
+    else if (pattern && b.id === `${p}-pattern`) { st.patternOn = !st.patternOn; render(); send(st.patternOn); }
+  });
+  return {set(fit, patternOn = false) { st.fit = {...fit}; st.patternOn = patternOn; render(); }, render};
+}
 
 function viewSettings() {
   const v = $('#view');
@@ -679,6 +753,7 @@ function viewSettings() {
         <div class="actions"><button id="out-save" class="btn primary">Guardar</button>
           <span class="muted small">Reinicia el engine: tarda unos segundos y solo se puede con la reproducción parada.</span></div>
       </div>
+
       <h2 class="title">Pantalla HDMI</h2>
       <div class="panel">
         <div id="hd-now" class="port">Cargando…</div>
@@ -687,21 +762,27 @@ function viewSettings() {
         </div>
         <div class="actions"><button id="hd-save" class="btn primary">Aplicar</button>
           <span class="muted small">Reinicia solo el video, no el audio. Automática: la que pide la pantalla, salvo que sea 4:3 y haya una 16:9.</span></div>
-        <div class="fit">
-          <div class="field"><span>Encaje del video</span>
-            <div id="fit-mode" class="seg"><button data-fit="fit">Ajustar</button><button data-fit="fill">Llenar</button><button data-fit="stretch">Estirar</button></div>
-            <small id="fit-help" class="muted"></small></div>
-          <label class="field"><span>Escala <b id="fit-scale-v"></b></span><input type="range" id="fit-scale" min="50" max="120" step="1"></label>
-          <div class="grid2">
-            <label class="field"><span>Horizontal <b id="fit-x-v"></b></span><input type="range" id="fit-x" min="-20" max="20" step="0.5"></label>
-            <label class="field"><span>Vertical <b id="fit-y-v"></b></span><input type="range" id="fit-y" min="-20" max="20" step="0.5"></label>
-          </div>
-          <div class="actions"><button id="fit-pattern" class="btn"></button><button id="fit-reset" class="btn ghost">Restablecer</button></div>
-          <p class="fine">Mostrá el patrón y ajustá hasta que el borde blanco se vea entero en los cuatro lados (la línea
-            roja marca el 5 % que muchas pantallas recortan). Los cambios se ven al instante, quedan guardados y valen para
-            todos los videos. Solo con la reproducción parada.</p>
-        </div>
+        ${fitHtml('fit', 'Encaje de los videos', {pattern: true})}
+        <p class="fine">Mostrá el patrón y ajustá hasta que el borde blanco se vea entero en los cuatro lados (la línea
+          roja marca el 5 % que muchas pantallas recortan). Los cambios se ven al instante, quedan guardados y valen para
+          todos los videos. Solo con la reproducción parada.</p>
       </div>
+
+      <h2 class="title">Pantalla en reposo</h2>
+      <div class="panel">
+        <div id="idle-now" class="port">Cargando…</div>
+        <p class="muted small">Lo que se ve cuando no suena un video (parado, o una canción sin video): una imagen, o un
+          video que se repite sin audio.</p>
+        <div class="actions">
+          <label class="btn">${ic('upload')}Subir imagen o video<input type="file" id="idle-file" class="vh" accept=".png,.jpg,.jpeg,.webp,.mp4,.mov,.m4v"></label>
+          <button id="idle-logo" class="btn ghost">Volver al logo</button>
+          <span id="idle-status" class="status"></span>
+        </div>
+        ${fitHtml('idle', 'Encaje')}
+        <p class="fine">Imagen: PNG, JPG o WebP. Video: MP4 H.264 hasta 1080p a 30 fps, como los de las canciones.
+          Los cambios se ven al instante en la pantalla. Solo con la reproducción parada.</p>
+      </div>
+
       <h2 class="title">Controles MIDI</h2>
       <div id="ct-port" class="port">Cargando…</div>
       <div class="table-wrap"><table class="controls">
@@ -713,95 +794,15 @@ function viewSettings() {
         acción; una acción puede tener varios (por ejemplo, el mismo footswitch en modo normal y en modo stomp).
         El pedal de expresión se ignora. Anterior y Siguiente funcionan solo con la reproducción parada.</p>
     </section></div>`;
-  let data = null, learning = null, out = null, engineWas = live.engine;
 
+  let data = null, learning = null, out = null, engineWas = live.engine;
+  const videoFit = fitControl(v, 'fit', '/api/fit', {mode: 'fit', scale: 100, x: 0, y: 0}, {pattern: true});
+  const idleFit = fitControl(v, 'idle', '/api/idle-fit', {mode: 'fit', scale: 54, x: 0, y: 0});
+
+  // Controles MIDI
   async function load() {
     try { data = await api('GET', '/api/controls'); } catch (e) { $('#ct-port').textContent = e.message; return; }
     render();
-  }
-
-  async function loadOutput() {
-    try { out = await api('GET', '/api/output'); } catch (e) { $('#out-now').textContent = e.message; return; }
-    const opts = sel => Object.entries(out.profiles).map(([k, label]) => `<option value="${k}" ${k === sel ? 'selected' : ''}>${esc(label)}</option>`).join('');
-    $('#out-profile').innerHTML = opts(out.profile);
-    $('#out-fallback').innerHTML = `<option value="" ${out.fallback ? '' : 'selected'}>No sonar: esperar a la interfaz</option>${opts(out.fallback)}`;
-    renderOutput();
-  }
-
-  async function loadHdmi() {
-    let h;
-    try { h = await api('GET', '/api/hdmi'); } catch (e) { $('#hd-now').textContent = e.message; return; }
-    if (!h.video) {
-      $('#hd-now').innerHTML = `<span class="chip warn">${ic('alert')}Sin video</span><span>mpv no está instalado en la Pi.</span>`;
-    } else if (!h.modes.length) {
-      $('#hd-now').innerHTML = `<span class="chip bad">${ic('alert')}Sin pantalla</span><span>No hay nada conectado por HDMI.</span>`;
-    } else {
-      $('#hd-now').innerHTML = `<span class="chip ok">${ic('check')}Conectada</span><span>Sale en <strong>${esc(h.current || h.modes[0])}</strong>
-        <span class="muted">· la pantalla pide ${esc(h.modes[0])}</span></span>`;
-    }
-    $('#hd-mode').innerHTML = `<option value="auto" ${h.mode === 'auto' ? 'selected' : ''}>Automática</option>` +
-      h.modes.map(m => `<option value="${esc(m)}" ${m === h.mode ? 'selected' : ''}>${esc(m)}</option>`).join('');
-    fit = h.fit;
-    patternOn = h.pattern;
-    renderFit();
-  }
-
-  // Encaje del video: cada cambio se manda en vivo (agrupado cada 150 ms) y se ve al instante en la pantalla.
-  let fit = null, patternOn = false, fitTimer;
-  const FIT_HELP = {fit: 'El video entero; si la pantalla no es 16:9, con franjas.',
-    fill: 'Llena la pantalla y recorta lo que sobra.', stretch: 'Llena la pantalla deformando la imagen.'};
-  const signed = n => `${n > 0 ? '+' : ''}${n} %`;
-
-  function renderFit() {
-    if (!fit) return;
-    const locked = sounding();
-    v.querySelectorAll('#fit-mode button').forEach(b => { b.classList.toggle('on', b.dataset.fit === fit.mode); b.disabled = locked; });
-    $('#fit-help').textContent = FIT_HELP[fit.mode];
-    for (const k of ['scale', 'x', 'y']) {
-      const input = $('#fit-' + k);
-      if (document.activeElement !== input) input.value = fit[k];
-      input.disabled = locked;
-    }
-    $('#fit-scale-v').textContent = `${fit.scale} %`;
-    $('#fit-x-v').textContent = signed(fit.x);
-    $('#fit-y-v').textContent = signed(fit.y);
-    const p = $('#fit-pattern');
-    p.innerHTML = patternOn ? `${ic('x')}Ocultar patrón` : `${ic('show')}Mostrar patrón`;
-    p.classList.toggle('primary', patternOn);
-    p.disabled = $('#fit-reset').disabled = locked;
-  }
-
-  function sendFit(pattern) {
-    clearTimeout(fitTimer);
-    const body = pattern === undefined ? {...fit} : {...fit, pattern};
-    fitTimer = setTimeout(async () => {
-      try { await api('POST', '/api/fit', body); } catch (err) { toast(err.message, 'bad'); loadHdmi(); }
-    }, pattern === undefined ? 150 : 0);
-  }
-
-  v.addEventListener('input', e => {
-    const k = {'fit-scale': 'scale', 'fit-x': 'x', 'fit-y': 'y'}[e.target.id];
-    if (!k || !fit) return;
-    fit[k] = +e.target.value;
-    renderFit();
-    sendFit();
-  });
-
-  function renderOutput() {
-    if (!out) return;
-    const o = live.state?.output || out.output;
-    $('#out-now').innerHTML = o.fallback
-      ? `<span class="chip warn">${ic('alert')}Respaldo</span><span>Sale por el <strong>${esc(o.label)}</strong>: no está la interfaz.</span>`
-      : `<span class="chip ok">${ic('check')}Activa</span><span>Sale por <strong>${esc(o.label)}</strong></span>`;
-    $('#out-save').disabled = sounding();
-  }
-
-  function onLive() {
-    render();
-    renderOutput();
-    renderFit();
-    if (live.engine && !engineWas) loadOutput();  // volvió después de un reinicio
-    engineWas = live.engine;
   }
 
   function render() {
@@ -823,12 +824,76 @@ function viewSettings() {
       : `${ic('controls')}<span>Pisá un footswitch para ver qué manda.</span>`;
   }
 
+  // Salida de audio
+  async function loadOutput() {
+    try { out = await api('GET', '/api/output'); } catch (e) { $('#out-now').textContent = e.message; return; }
+    const opts = sel => Object.entries(out.profiles).map(([k, label]) => `<option value="${k}" ${k === sel ? 'selected' : ''}>${esc(label)}</option>`).join('');
+    $('#out-profile').innerHTML = opts(out.profile);
+    $('#out-fallback').innerHTML = `<option value="" ${out.fallback ? '' : 'selected'}>No sonar: esperar a la interfaz</option>${opts(out.fallback)}`;
+    renderOutput();
+  }
+
+  function renderOutput() {
+    if (!out) return;
+    const o = live.state?.output || out.output;
+    $('#out-now').innerHTML = o.fallback
+      ? `<span class="chip warn">${ic('alert')}Respaldo</span><span>Sale por el <strong>${esc(o.label)}</strong>: no está la interfaz.</span>`
+      : `<span class="chip ok">${ic('check')}Activa</span><span>Sale por <strong>${esc(o.label)}</strong></span>`;
+    $('#out-save').disabled = sounding();
+  }
+
+  // Pantalla HDMI y pantalla en reposo
+  async function loadHdmi() {
+    let h;
+    try { h = await api('GET', '/api/hdmi'); } catch (e) {
+      $('#hd-now').textContent = $('#idle-now').textContent = e.message;
+      return;
+    }
+    if (!h.video) {
+      $('#hd-now').innerHTML = `<span class="chip warn">${ic('alert')}Sin video</span><span>mpv no está instalado en la Pi.</span>`;
+    } else if (!h.modes.length) {
+      $('#hd-now').innerHTML = `<span class="chip bad">${ic('alert')}Sin pantalla</span><span>No hay nada conectado por HDMI.</span>`;
+    } else {
+      $('#hd-now').innerHTML = `<span class="chip ok">${ic('check')}Conectada</span><span>Sale en <strong>${esc(h.current || h.modes[0])}</strong>
+        <span class="muted">· la pantalla pide ${esc(h.modes[0])}</span></span>`;
+    }
+    $('#hd-mode').innerHTML = `<option value="auto" ${h.mode === 'auto' ? 'selected' : ''}>Automática</option>` +
+      h.modes.map(m => `<option value="${esc(m)}" ${m === h.mode ? 'selected' : ''}>${esc(m)}</option>`).join('');
+    videoFit.set(h.fit, h.pattern);
+    const idle = h.idle;
+    const what = !idle.file ? null : !idle.custom ? 'Logo' : idle.kind === 'video' ? 'Video' : 'Imagen';
+    $('#idle-now').innerHTML = !idle.file
+      ? `<span class="chip warn">${ic('alert')}Nada</span><span>Pantalla en negro</span>`
+      : `<span class="chip ok">${ic('check')}${what}</span><span>${idle.custom ? `<strong>${esc(idle.file)}</strong>` : 'Logo de Necrópolis (el de siempre)'}</span>`;
+    $('#idle-logo').disabled = !idle.custom;
+    idleFit.set(idle.fit);
+  }
+
+  function onLive() {
+    render();
+    renderOutput();
+    videoFit.render();
+    idleFit.render();
+    if (live.engine && !engineWas) { loadOutput(); loadHdmi(); }  // volvió después de un reinicio
+    engineWas = live.engine;
+  }
+
+  v.addEventListener('change', async e => {
+    if (e.target.id !== 'idle-file' || !e.target.files.length) return;
+    const f = e.target.files[0];
+    e.target.value = '';
+    const status = (html, cls = '') => { const s = $('#idle-status'); s.innerHTML = html; s.className = 'status ' + cls; };
+    if (sounding()) return status(`${ic('alert')}<span>Está sonando: se cambia con la reproducción parada.</span>`, 'bad');
+    try {
+      const r = await upload(f, p => status(`<span>Subiendo ${esc(f.name)} — ${Math.round(100 * p)}%</span>`), '/api/idle/');
+      status(`${ic('check')}<span>Listo: ${esc(r.file)}${(r.warnings || []).map(w => `<br>${esc(w)}`).join('')}</span>`, 'ok');
+      loadHdmi();
+    } catch (err) { status(`${ic('alert')}<span>${esc(err.message)}</span>`, 'bad'); }
+  });
+
   v.addEventListener('click', async e => {
     const b = e.target.closest('button');
     if (!b) return;
-    if (b.dataset.fit && fit) { fit.mode = b.dataset.fit; renderFit(); return sendFit(); }
-    if (b.id === 'fit-pattern' && fit) { patternOn = !patternOn; renderFit(); return sendFit(patternOn); }
-    if (b.id === 'fit-reset' && fit) { fit = {mode: 'fit', scale: 100, x: 0, y: 0}; renderFit(); return sendFit(); }
     if (b.dataset.learn) {
       learning = b.dataset.learn; render();
       try {
@@ -846,6 +911,8 @@ function viewSettings() {
         toast('Aplicado: reiniciando el video…');
         setTimeout(loadHdmi, 4000);
       } catch (err) { toast(err.message, 'bad'); }
+    } else if (b.id === 'idle-logo') {
+      try { await api('DELETE', '/api/idle'); toast('Volvió el logo'); loadHdmi(); } catch (err) { toast(err.message, 'bad'); }
     } else if (b.id === 'out-save') {
       try {
         const r = await api('POST', '/api/output', {profile: $('#out-profile').value, fallback: $('#out-fallback').value || null});

@@ -220,6 +220,12 @@ async def post_fit(body: FitIn):
     return _ok(await engine_request(req))
 
 
+@app.post("/api/idle-fit")
+async def post_idle_fit(body: FitIn):
+    return _ok(await engine_request({"cmd": "set_idle_fit",
+                                     "fit": {"mode": body.mode, "scale": body.scale, "x": body.x, "y": body.y}}))
+
+
 @app.get("/api/info")
 def get_info():
     return {
@@ -272,6 +278,24 @@ def clear_incoming():
     return {"ok": True}
 
 
+async def _save_upload(request, path):
+    """Guarda el cuerpo crudo del pedido en `path` con el tope de escritura. Si arranca a sonar, corta (409)."""
+    throttle = store.Throttle(guard=True)
+    buf = bytearray()
+    try:
+        with open(path, "wb") as fo:
+            async for chunk in request.stream():
+                buf += chunk
+                if len(buf) >= UPLOAD_CHUNK:
+                    await run_in_threadpool(_write, fo, bytes(buf), throttle)
+                    buf.clear()
+            if buf:
+                await run_in_threadpool(_write, fo, bytes(buf), throttle)
+    except store.Busy as e:
+        path.unlink(missing_ok=True)
+        raise HTTPException(409, str(e)) from None
+
+
 @app.put("/api/incoming/{filename}")
 async def put_incoming(filename: str, request: Request):
     name = Path(filename).name
@@ -281,21 +305,51 @@ async def put_incoming(filename: str, request: Request):
         raise HTTPException(409, PLAYING)
     d = incoming_dir()
     d.mkdir(parents=True, exist_ok=True)
-    throttle = store.Throttle(guard=True)
-    buf = bytearray()
-    try:
-        with open(d / name, "wb") as fo:
-            async for chunk in request.stream():
-                buf += chunk
-                if len(buf) >= UPLOAD_CHUNK:
-                    await run_in_threadpool(_write, fo, bytes(buf), throttle)
-                    buf.clear()
-            if buf:
-                await run_in_threadpool(_write, fo, bytes(buf), throttle)
-    except store.Busy as e:
-        (d / name).unlink(missing_ok=True)
-        raise HTTPException(409, str(e)) from None
+    await _save_upload(request, d / name)
     return {"ok": True, "size": (d / name).stat().st_size}
+
+
+# ── Pantalla de reposo (lo que muestra el HDMI cuando no suena un video) ──────
+
+IDLE_IMAGE_EXT = {".png", ".jpg", ".jpeg", ".webp"}
+
+
+def idle_dir():
+    return store.DATA / "reposo"
+
+
+@app.put("/api/idle/{filename}")
+async def put_idle(filename: str, request: Request):
+    """Reemplaza la pantalla de reposo por una imagen o un video (queda uno solo)."""
+    name = Path(filename).name
+    ext = Path(name).suffix.lower()
+    if not name or name.startswith(".") or ext not in IDLE_IMAGE_EXT | library.VIDEO_EXT:
+        raise HTTPException(400, "Tiene que ser una imagen (PNG, JPG, WebP) o un video (MP4, MOV)")
+    if store.is_playing():
+        raise HTTPException(409, PLAYING)
+    d = idle_dir()
+    d.mkdir(parents=True, exist_ok=True)
+    tmp = d / f".subiendo{ext}"
+    await _save_upload(request, tmp)
+    warnings = []
+    if ext in library.VIDEO_EXT:
+        try:
+            _, warnings = await run_in_threadpool(library._probe_video, tmp, name)
+        except library.ImportProblem as e:
+            tmp.unlink(missing_ok=True)
+            raise HTTPException(400, str(e)) from None
+    for p in d.iterdir():
+        if p != tmp:
+            p.unlink()
+    tmp.rename(d / name)
+    return {"ok": True, "file": name, "warnings": warnings}
+
+
+@app.delete("/api/idle")
+def delete_idle():
+    """Vuelve al logo."""
+    shutil.rmtree(idle_dir(), ignore_errors=True)
+    return {"ok": True}
 
 
 @app.post("/api/import")

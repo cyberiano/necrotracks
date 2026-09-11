@@ -18,6 +18,7 @@ con JSON por línea, que usan la web, la pedalera, el OLED y el CLI:
     → {"cmd": "hdmi"}            ← modos de la pantalla, el elegido ("auto" o "WxH") y el que se usa
     → {"cmd": "set_hdmi", "mode": "auto"|"WxH"}   parado; reinicia solo el video (el audio no se toca)
     → {"cmd": "set_fit", "fit": {"mode", "scale", "x", "y"}, "pattern": bool}   parado; en vivo, sin reiniciar
+    → {"cmd": "set_idle_fit", "fit": {...}}   el encaje de la pantalla de reposo; parado, en vivo
 
 Cada pedido responde {"ok": true} o {"ok": false, "error": "..."}. El engine no depende de
 ningún cliente: si la web se cae, el show sigue, y los footswitches también.
@@ -31,12 +32,12 @@ import sys
 
 from . import controls, library, profiles, setlists, store
 from .show import Show
-from .video import FIT_DEFAULT, check_fit, hdmi_modes, pick_mode
+from .video import FIT_DEFAULT, IDLE_DIR, IDLE_FIT_DEFAULT, VIDEO_EXT, check_fit, hdmi_modes, idle_file, pick_mode
 
 log = logging.getLogger("necrotracks.engine")
 
 DEFAULT_CONFIG = {"profile": profiles.DEFAULT, "fallback": profiles.FALLBACK, "setlist": None, "hdmi_mode": "auto",
-                  "video_fit": dict(FIT_DEFAULT),
+                  "video_fit": dict(FIT_DEFAULT), "idle_fit": dict(IDLE_FIT_DEFAULT),
                   "midi": {"port": controls.DEFAULT_PORT, "map": controls.DEFAULT_MAP}}
 EMPTY_STATE = {"setlist": None, "slug": None, "state": "stopped", "index": 0, "count": 0, "song": None,
                "song_slug": None, "block": None,
@@ -157,7 +158,8 @@ class Engine:
         if cmd == "hdmi":
             return {"ok": True, "modes": hdmi_modes(), "mode": self.config.get("hdmi_mode", "auto"),
                     "current": self.video.mpv.current_mode if self.video else None, "video": self.video is not None,
-                    "fit": check_fit(self.config.get("video_fit")), "pattern": bool(getattr(self.video, "pattern_on", False))}
+                    "fit": check_fit(self.config.get("video_fit")), "pattern": bool(getattr(self.video, "pattern_on", False)),
+                    "idle": self._idle_info()}
         if cmd == "set_hdmi":
             mode = req.get("mode") or "auto"
             if mode != "auto" and mode not in hdmi_modes():
@@ -181,7 +183,24 @@ class Engine:
                 except (OSError, RuntimeError) as e:  # mpv reiniciándose: queda guardado para el próximo
                     log.warning("video: no se pudo aplicar el encaje en vivo: %s", e)
             return {"ok": True, "fit": fit}
+        if cmd == "set_idle_fit":
+            self._require_stopped("ajustar la pantalla de reposo")
+            fit = check_fit(req.get("fit"), IDLE_FIT_DEFAULT)
+            self.config["idle_fit"] = fit
+            store.write_json(config_path(), self.config)
+            if self.video:
+                try:
+                    self.video.set_idle_fit(fit)
+                except (OSError, RuntimeError) as e:
+                    log.warning("video: no se pudo aplicar el encaje del reposo en vivo: %s", e)
+            return {"ok": True, "fit": fit}
         raise EngineError(f"Comando desconocido: {cmd!r}")
+
+    def _idle_info(self):
+        f = idle_file(store.DATA, store.DATA / "video-logo.png")
+        return {"file": f.name if f else None, "custom": bool(f and f.parent.name == IDLE_DIR),
+                "kind": ("video" if f.suffix.lower() in VIDEO_EXT else "image") if f else None,
+                "fit": check_fit(self.config.get("idle_fit"), IDLE_FIT_DEFAULT)}
 
     def set_output(self, profile, fallback):
         """Guarda la salida elegida y reinicia el engine para abrirla (el stream no se reconfigura en caliente)."""
@@ -350,9 +369,11 @@ def main():
         # El logo va en los datos (no en el repo): sin él, la pantalla queda en negro entre videos.
         delay = player.stream.latency + config.get("video_offset", 0.0)
         mode = lambda: pick_mode(hdmi_modes(), engine.config.get("hdmi_mode", "auto"))  # noqa: E731
-        engine.video = Video(engine.state, library.video_path, store.DATA / "video-logo.png", delay=delay,
+        # La pantalla de reposo: lo subido a data/reposo o el logo (en los datos, no en el repo).
+        idle = lambda: idle_file(store.DATA, store.DATA / "video-logo.png")  # noqa: E731
+        engine.video = Video(engine.state, library.video_path, idle, delay=delay,
                              mpv=Mpv(store.RUN / "mpv.sock", mode=mode), cache_dir=store.RUN,
-                             fit=config.get("video_fit"))
+                             fit=config.get("video_fit"), idle_fit=config.get("idle_fit"))
         engine.video.start()
     if config["setlist"]:
         try:

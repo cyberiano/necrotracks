@@ -6,7 +6,7 @@ import pytest
 import soundfile as sf
 
 from engine import library
-from engine.video import LOGO_ZOOM, Video
+from engine.video import IDLE_FIT_DEFAULT, Video, fit_opts
 
 needs_ffmpeg = pytest.mark.skipif(not shutil.which("ffmpeg"), reason="sin ffmpeg")
 
@@ -41,14 +41,15 @@ def make(tmp_path):
     logo = tmp_path / "logo.png"
     logo.write_bytes(b"png")
     mpv, clock = FakeMpv(), Clock()
-    v = Video(None, lambda s: f"/v/{s}.mp4" if s == "uno" else None, logo, delay=0.1, mpv=mpv, clock=clock)
+    v = Video(None, lambda s: f"/v/{s}.mp4" if s == "uno" else None, lambda: logo, delay=0.1, mpv=mpv, clock=clock)
     return v, mpv, clock, logo
 
 
 def test_logo_cuando_no_suena_video(tmp_path):
     v, mpv, clock, logo = make(tmp_path)
     v.step(st("stopped"))
-    assert mpv.cmds == [("loadfile", str(logo), "replace", -1, f"video-zoom={LOGO_ZOOM},pause=no")]
+    assert mpv.cmds == [("loadfile", str(logo), "replace", -1, f"{fit_opts(IDLE_FIT_DEFAULT)},pause=no")]
+    assert "video-zoom=-0.889," in mpv.cmds[0][4]  # 54 %: como se veía el logo
     v.step(st("stopped"))
     assert len(mpv.cmds) == 1  # nada nuevo
     v.step(st("playing", slug="dos", pos=3))  # canción sin video: sigue el logo
@@ -96,7 +97,7 @@ def test_sincronia(tmp_path):
 
 def test_sin_logo_queda_negro(tmp_path):
     mpv = FakeMpv()
-    v = Video(None, lambda s: None, tmp_path / "no-existe.png", mpv=mpv)
+    v = Video(None, lambda s: None, lambda: None, mpv=mpv)
     v.step(st("stopped"))
     assert mpv.cmds == [("stop",)]
 
@@ -169,6 +170,43 @@ def test_patron_y_encaje_en_vivo(tmp_path):
     n = len(mpv.cmds)
     v.set_fit({"scale": 100})  # con el logo no toca mpv
     assert len(mpv.cmds) == n
+
+
+def test_archivo_de_reposo(tmp_path):
+    from engine.video import idle_file
+
+    logo = tmp_path / "video-logo.png"
+    assert idle_file(tmp_path, logo) is None  # nada: negro
+    logo.write_bytes(b"png")
+    assert idle_file(tmp_path, logo) == logo
+    d = tmp_path / "reposo"
+    d.mkdir()
+    (d / "notas.txt").write_text("no")
+    (d / ".subiendo.png").write_bytes(b"a medio subir")
+    assert idle_file(tmp_path, logo) == logo  # ni lo que no es imagen o video ni lo que se está subiendo
+    (d / "Visuales.MP4").write_bytes(b"mp4")
+    assert idle_file(tmp_path, logo) == d / "Visuales.MP4"
+
+
+def test_reposo_con_video_en_loop_y_su_propio_encaje(tmp_path):
+    import os
+
+    idle = tmp_path / "reposo.mp4"
+    idle.write_bytes(b"mp4")
+    mpv, clock = FakeMpv(), Clock()
+    v = Video(None, lambda s: None, lambda: idle, mpv=mpv, clock=clock, idle_fit={"mode": "fill", "scale": 100})
+    v.step(st("stopped"))
+    assert mpv.cmds[-1] == ("loadfile", str(idle), "replace", -1, "keepaspect=yes,panscan=1,video-zoom=0,"
+                            "video-pan-x=0,video-pan-y=0,background-color=#00000000,loop-file=inf,pause=no")
+    v.set_idle_fit({"mode": "fit", "scale": 80})  # en vivo
+    assert ("set_property", "panscan", 0.0) in mpv.cmds
+    n = len(mpv.cmds)
+    v.set_fit({"scale": 90})  # el encaje de los videos no toca el reposo
+    v.step(st("playing", slug="sin-video", pos=2))  # canción sin video: sigue el reposo, sin recargar
+    assert len(mpv.cmds) == n
+    os.utime(idle, (1, 1))  # se subió otro archivo con el mismo nombre: se recarga
+    v.step(st("stopped"))
+    assert len(mpv.cmds) == n + 1 and mpv.cmds[-1][1] == str(idle) and "video-zoom=-0.3219" in mpv.cmds[-1][4]
 
 
 def test_resolucion_por_el_engine(monkeypatch):
