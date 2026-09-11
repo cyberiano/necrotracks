@@ -204,6 +204,22 @@ async def post_hdmi(body: HdmiIn):
     return _ok(await engine_request({"cmd": "set_hdmi", "mode": body.mode}))
 
 
+class FitIn(BaseModel):
+    mode: str = "fit"
+    scale: float = 100
+    x: float = 0
+    y: float = 0
+    pattern: bool | None = None
+
+
+@app.post("/api/fit")
+async def post_fit(body: FitIn):
+    req = {"cmd": "set_fit", "fit": {"mode": body.mode, "scale": body.scale, "x": body.x, "y": body.y}}
+    if body.pattern is not None:
+        req["pattern"] = body.pattern
+    return _ok(await engine_request(req))
+
+
 @app.get("/api/info")
 def get_info():
     return {

@@ -61,7 +61,8 @@ def test_video_sigue_al_audio(tmp_path):
     v.step(st("playing", pos=0.5))
     # posición 0,5 − latencia 0,1 + 0,33 de adelanto por lo que tarda mpv en arrancar
     assert mpv.cmds[-1] == ("loadfile", "/v/uno.mp4", "replace", -1,
-                            "start=0.730,video-zoom=0,background-color=#00000000,pause=no")
+                            "start=0.730,keepaspect=yes,panscan=0,video-zoom=0,video-pan-x=0,video-pan-y=0,"
+                            "background-color=#00000000,pause=no")
     v.step(st("paused", pos=0.8))
     assert mpv.cmds[-1] == ("set_property", "pause", True)
     v.step(st("playing", pos=0.8))
@@ -138,6 +139,38 @@ def test_modos_de_la_pantalla(tmp_path):
     assert hdmi_modes(tmp_path) == []
 
 
+def test_encaje_del_video():
+    from engine.video import check_fit, fit_opts
+
+    assert check_fit(None) == {"mode": "fit", "scale": 100, "x": 0.0, "y": 0.0}
+    assert fit_opts({"mode": "fill", "scale": 90, "x": 5, "y": -2.5}) == \
+        "keepaspect=yes,panscan=1,video-zoom=-0.152,video-pan-x=0.05,video-pan-y=-0.025"
+    assert fit_opts({"mode": "stretch"}).startswith("keepaspect=no,panscan=0,")
+    for bad in ({"mode": "zoom"}, {"scale": 200}, {"x": 40}):
+        with pytest.raises(ValueError):
+            check_fit(bad)
+
+
+def test_patron_y_encaje_en_vivo(tmp_path):
+    from pathlib import Path
+
+    v, mpv, clock, logo = make(tmp_path)
+    v.pattern, v.pattern_on = Path("/run/patron.png"), True
+    v.step(st("stopped"))
+    assert mpv.cmds[-1] == ("loadfile", "/run/patron.png", "replace", -1,
+                            "keepaspect=yes,panscan=0,video-zoom=0,video-pan-x=0,video-pan-y=0,background-color=#00000000,pause=no")
+    v.set_fit({"mode": "fit", "scale": 95, "x": 1, "y": 0})  # en vivo, sobre el patrón
+    assert ("set_property", "video-zoom", round(np.log2(0.95), 4)) in mpv.cmds
+    assert ("set_property", "video-pan-x", 0.01) in mpv.cmds
+    v.step(st("playing", pos=0.5))  # arranca a sonar: se apaga el patrón y va el video, con el encaje nuevo
+    assert not v.pattern_on and mpv.cmds[-1][1] == "/v/uno.mp4" and "video-zoom=-0.074" in mpv.cmds[-1][4]
+    v.step(st("stopped"))
+    assert mpv.cmds[-1][1] == str(logo)  # parado de nuevo: el logo, no el patrón
+    n = len(mpv.cmds)
+    v.set_fit({"scale": 100})  # con el logo no toca mpv
+    assert len(mpv.cmds) == n
+
+
 def test_resolucion_por_el_engine(monkeypatch):
     from engine import daemon, store
     from test_show import FakePlayer
@@ -145,7 +178,12 @@ def test_resolucion_por_el_engine(monkeypatch):
     monkeypatch.setattr(daemon, "hdmi_modes", lambda: ["1024x768", "1920x1080", "1360x768"])
     restarts = []
 
+    fits = []
+
     class FakeVideo:
+        pattern_on = False
+        set_fit = staticmethod(fits.append)
+
         class mpv:
             current_mode = "1920x1080"
             restart = staticmethod(lambda: restarts.append(True))
@@ -158,6 +196,13 @@ def test_resolucion_por_el_engine(monkeypatch):
     assert restarts == [True] and store.read_json(daemon.config_path())["hdmi_mode"] == "1360x768"
     with pytest.raises(daemon.EngineError, match="no ofrece"):
         engine.handle({"cmd": "set_hdmi", "mode": "800x480"})
+
+    assert info["fit"] == {"mode": "fit", "scale": 100, "x": 0.0, "y": 0.0} and info["pattern"] is False
+    resp = engine.handle({"cmd": "set_fit", "fit": {"mode": "fill", "scale": 96, "x": 0, "y": 1}, "pattern": True})
+    assert resp["fit"]["scale"] == 96 and FakeVideo.pattern_on is True and fits[-1]["mode"] == "fill"
+    assert store.read_json(daemon.config_path())["video_fit"]["y"] == 1.0
+    with pytest.raises(ValueError, match="escala"):
+        engine.handle({"cmd": "set_fit", "fit": {"scale": 10}})
 
 
 def make_mp4(path, seconds=1):

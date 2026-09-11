@@ -687,6 +687,20 @@ function viewSettings() {
         </div>
         <div class="actions"><button id="hd-save" class="btn primary">Aplicar</button>
           <span class="muted small">Reinicia solo el video, no el audio. Automática: la que pide la pantalla, salvo que sea 4:3 y haya una 16:9.</span></div>
+        <div class="fit">
+          <div class="field"><span>Encaje del video</span>
+            <div id="fit-mode" class="seg"><button data-fit="fit">Ajustar</button><button data-fit="fill">Llenar</button><button data-fit="stretch">Estirar</button></div>
+            <small id="fit-help" class="muted"></small></div>
+          <label class="field"><span>Escala <b id="fit-scale-v"></b></span><input type="range" id="fit-scale" min="50" max="120" step="1"></label>
+          <div class="grid2">
+            <label class="field"><span>Horizontal <b id="fit-x-v"></b></span><input type="range" id="fit-x" min="-20" max="20" step="0.5"></label>
+            <label class="field"><span>Vertical <b id="fit-y-v"></b></span><input type="range" id="fit-y" min="-20" max="20" step="0.5"></label>
+          </div>
+          <div class="actions"><button id="fit-pattern" class="btn"></button><button id="fit-reset" class="btn ghost">Restablecer</button></div>
+          <p class="fine">Mostrá el patrón y ajustá hasta que el borde blanco se vea entero en los cuatro lados (la línea
+            roja marca el 5 % que muchas pantallas recortan). Los cambios se ven al instante, quedan guardados y valen para
+            todos los videos. Solo con la reproducción parada.</p>
+        </div>
       </div>
       <h2 class="title">Controles MIDI</h2>
       <div id="ct-port" class="port">Cargando…</div>
@@ -727,7 +741,51 @@ function viewSettings() {
     }
     $('#hd-mode').innerHTML = `<option value="auto" ${h.mode === 'auto' ? 'selected' : ''}>Automática</option>` +
       h.modes.map(m => `<option value="${esc(m)}" ${m === h.mode ? 'selected' : ''}>${esc(m)}</option>`).join('');
+    fit = h.fit;
+    patternOn = h.pattern;
+    renderFit();
   }
+
+  // Encaje del video: cada cambio se manda en vivo (agrupado cada 150 ms) y se ve al instante en la pantalla.
+  let fit = null, patternOn = false, fitTimer;
+  const FIT_HELP = {fit: 'El video entero; si la pantalla no es 16:9, con franjas.',
+    fill: 'Llena la pantalla y recorta lo que sobra.', stretch: 'Llena la pantalla deformando la imagen.'};
+  const signed = n => `${n > 0 ? '+' : ''}${n} %`;
+
+  function renderFit() {
+    if (!fit) return;
+    const locked = sounding();
+    v.querySelectorAll('#fit-mode button').forEach(b => { b.classList.toggle('on', b.dataset.fit === fit.mode); b.disabled = locked; });
+    $('#fit-help').textContent = FIT_HELP[fit.mode];
+    for (const k of ['scale', 'x', 'y']) {
+      const input = $('#fit-' + k);
+      if (document.activeElement !== input) input.value = fit[k];
+      input.disabled = locked;
+    }
+    $('#fit-scale-v').textContent = `${fit.scale} %`;
+    $('#fit-x-v').textContent = signed(fit.x);
+    $('#fit-y-v').textContent = signed(fit.y);
+    const p = $('#fit-pattern');
+    p.innerHTML = patternOn ? `${ic('x')}Ocultar patrón` : `${ic('show')}Mostrar patrón`;
+    p.classList.toggle('primary', patternOn);
+    p.disabled = $('#fit-reset').disabled = locked;
+  }
+
+  function sendFit(pattern) {
+    clearTimeout(fitTimer);
+    const body = pattern === undefined ? {...fit} : {...fit, pattern};
+    fitTimer = setTimeout(async () => {
+      try { await api('POST', '/api/fit', body); } catch (err) { toast(err.message, 'bad'); loadHdmi(); }
+    }, pattern === undefined ? 150 : 0);
+  }
+
+  v.addEventListener('input', e => {
+    const k = {'fit-scale': 'scale', 'fit-x': 'x', 'fit-y': 'y'}[e.target.id];
+    if (!k || !fit) return;
+    fit[k] = +e.target.value;
+    renderFit();
+    sendFit();
+  });
 
   function renderOutput() {
     if (!out) return;
@@ -741,6 +799,7 @@ function viewSettings() {
   function onLive() {
     render();
     renderOutput();
+    renderFit();
     if (live.engine && !engineWas) loadOutput();  // volvió después de un reinicio
     engineWas = live.engine;
   }
@@ -767,6 +826,9 @@ function viewSettings() {
   v.addEventListener('click', async e => {
     const b = e.target.closest('button');
     if (!b) return;
+    if (b.dataset.fit && fit) { fit.mode = b.dataset.fit; renderFit(); return sendFit(); }
+    if (b.id === 'fit-pattern' && fit) { patternOn = !patternOn; renderFit(); return sendFit(patternOn); }
+    if (b.id === 'fit-reset' && fit) { fit = {mode: 'fit', scale: 100, x: 0, y: 0}; renderFit(); return sendFit(); }
     if (b.dataset.learn) {
       learning = b.dataset.learn; render();
       try {

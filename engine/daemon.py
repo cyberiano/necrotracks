@@ -17,6 +17,7 @@ con JSON por línea, que usan la web, la pedalera, el OLED y el CLI:
     → {"cmd": "set_output", "profile": "...", "fallback": "pi-jack"|null}   parado; reinicia el engine
     → {"cmd": "hdmi"}            ← modos de la pantalla, el elegido ("auto" o "WxH") y el que se usa
     → {"cmd": "set_hdmi", "mode": "auto"|"WxH"}   parado; reinicia solo el video (el audio no se toca)
+    → {"cmd": "set_fit", "fit": {"mode", "scale", "x", "y"}, "pattern": bool}   parado; en vivo, sin reiniciar
 
 Cada pedido responde {"ok": true} o {"ok": false, "error": "..."}. El engine no depende de
 ningún cliente: si la web se cae, el show sigue, y los footswitches también.
@@ -30,11 +31,12 @@ import sys
 
 from . import controls, library, profiles, setlists, store
 from .show import Show
-from .video import hdmi_modes, pick_mode
+from .video import FIT_DEFAULT, check_fit, hdmi_modes, pick_mode
 
 log = logging.getLogger("necrotracks.engine")
 
 DEFAULT_CONFIG = {"profile": profiles.DEFAULT, "fallback": profiles.FALLBACK, "setlist": None, "hdmi_mode": "auto",
+                  "video_fit": dict(FIT_DEFAULT),
                   "midi": {"port": controls.DEFAULT_PORT, "map": controls.DEFAULT_MAP}}
 EMPTY_STATE = {"setlist": None, "slug": None, "state": "stopped", "index": 0, "count": 0, "song": None,
                "song_slug": None, "block": None,
@@ -154,7 +156,8 @@ class Engine:
             return self.set_output(req.get("profile") or self.config["profile"], req.get("fallback") or None)
         if cmd == "hdmi":
             return {"ok": True, "modes": hdmi_modes(), "mode": self.config.get("hdmi_mode", "auto"),
-                    "current": self.video.mpv.current_mode if self.video else None, "video": self.video is not None}
+                    "current": self.video.mpv.current_mode if self.video else None, "video": self.video is not None,
+                    "fit": check_fit(self.config.get("video_fit")), "pattern": bool(getattr(self.video, "pattern_on", False))}
         if cmd == "set_hdmi":
             mode = req.get("mode") or "auto"
             if mode != "auto" and mode not in hdmi_modes():
@@ -165,6 +168,19 @@ class Engine:
             if self.video:
                 self.video.mpv.restart()
             return {"ok": True}
+        if cmd == "set_fit":
+            self._require_stopped("ajustar el video")
+            fit = check_fit(req.get("fit"))  # ValueError si está fuera de rango
+            self.config["video_fit"] = fit
+            store.write_json(config_path(), self.config)  # parado: unos bytes
+            if self.video:
+                if "pattern" in req:
+                    self.video.pattern_on = bool(req["pattern"])
+                try:
+                    self.video.set_fit(fit)
+                except (OSError, RuntimeError) as e:  # mpv reiniciándose: queda guardado para el próximo
+                    log.warning("video: no se pudo aplicar el encaje en vivo: %s", e)
+            return {"ok": True, "fit": fit}
         raise EngineError(f"Comando desconocido: {cmd!r}")
 
     def set_output(self, profile, fallback):
@@ -335,7 +351,8 @@ def main():
         delay = player.stream.latency + config.get("video_offset", 0.0)
         mode = lambda: pick_mode(hdmi_modes(), engine.config.get("hdmi_mode", "auto"))  # noqa: E731
         engine.video = Video(engine.state, library.video_path, store.DATA / "video-logo.png", delay=delay,
-                             mpv=Mpv(store.RUN / "mpv.sock", mode=mode), cache_dir=store.RUN)
+                             mpv=Mpv(store.RUN / "mpv.sock", mode=mode), cache_dir=store.RUN,
+                             fit=config.get("video_fit"))
         engine.video.start()
     if config["setlist"]:
         try:
