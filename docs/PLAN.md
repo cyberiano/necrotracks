@@ -50,11 +50,14 @@ en "Diagnóstico del clipping" más abajo.
   Ojo: con el audio integrado prendido, el jack es la placa 0 y el iRig la 1 (el código busca por nombre).
 
 **Próximos pasos, en orden:**
-1. **Usarla en un ensayo** (el primer uso real) manejándola desde la web, con el hotspot. Antes: probar
-   el hotspot con el iPhone y escuchar el jack. Si se traba → Raspberry Pi 4.
-2. **Fase 4, lo que falta**: LEDs de los footswitches como indicador de estado, OLED SH1106 +
+1. **Pruebas físicas con Cristian en casa**, de a una: (a) el hotspot con el iPhone y la app instalada;
+   (b) escuchar el jack de respaldo; (c) **video: 30 min con el engine sonando por el iRig y "There is a
+   Place" en la set list `video-prueba`**, mirando el vúmetro del iRig y el monitor (el logo entre
+   canciones, el video junto con el click). Si el iRig se traba con el video → Raspberry Pi 4.
+2. **Usarla en un ensayo** (el primer uso real) manejándola desde la web, con el hotspot.
+3. **Fase 4, lo que falta**: LEDs de los footswitches como indicador de estado, OLED SH1106 +
    encoder, botones GPIO (los footswitches y el MIDI Learn ya están).
-3. Fase 5 (hotspot, chequeo pre-show en la UI, pánico, apagado seguro) y Fase 6 (MIDI de automatización).
+4. Fase 5 (hotspot, chequeo pre-show en la UI, pánico, apagado seguro) y Fase 6 (MIDI de automatización).
 
 **Pendientes y deudas:**
 - MIDI OUT hacia el DIN del iRig: sin probar (faltan cables).
