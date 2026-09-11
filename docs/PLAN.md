@@ -11,7 +11,7 @@ Complementa a `Reproductor multipista para vivo Necrotracks.md` (el *qué*); est
 ajuste el iRig se silencia solo a los ~25 min. Detalle en "Diagnóstico del clipping" más abajo.
 
 **En la Pi hoy** (`necrotracks@192.168.1.32` por la WiFi Akasha; el Ethernet está desenchufado):
-- `main` desplegado (código `8501ad0`): `necrotracks-engine` (dueño del iRig en `1-1.3`, prioridad RT, MIDI
+- `main` desplegado (código `47157f1`): `necrotracks-engine` (dueño del iRig en `1-1.3`, prioridad RT, MIDI
   y video), `necrotracks-web` (puerto 80) y `necrotracks-hotspot` (hotspot si no hay WiFi conocida).
 - `cmdline.txt`: `dwc_otg.speed=1`, `console=tty3 quiet splash`, sin cursor. `config.txt`: audio integrado
   prendido (jack de respaldo), `vc4-kms-v3d,noaudio,cma-384`, `disable_splash=1`. Plymouth con el tema
@@ -19,7 +19,8 @@ ajuste el iRig se silencia solo a los ~25 min. Detalle en "Diagnóstico del clip
 - Biblioteca: "Sands of time", "I will not spoil" y "There is a Place" (con video 720p). Set lists `prueba`,
   `soak` y `video-prueba`. `video-logo.png` (logo blanco de Necrópolis) está en los datos, no en el repo.
   En `data/reposo/` quedó la imagen que subió Cristian.
-- `config.json`: `hdmi_mode` 1280x720 (elegido a mano), `video_fit` (vertical −2,5 %), `idle_fit`.
+- `config.json`: `hdmi_mode` automático (sale en 1920x1080), `video_fit` en el default y `idle_fit` al 50 %
+  subido (Cristian recalibró con la imagen del 30 aniversario de Necrópolis como pantalla de reposo).
 - `/var/lib/necrotracks/video-prueba/`: videos de prueba y una copia del MP4 original. Se pueden borrar.
 - Monitor de prueba: un Samsung detrás de un adaptador HDMI-VGA (EDID "TS35505", pide 1024x768).
 
@@ -230,6 +231,13 @@ Degrada bien: si se corta el WS, muestra "desconectado" y no bloquea nada.
   Menú fijo igual en todas las pantallas; en el celular, pestañas abajo y tablas en bloques.
 - **Instalable en el iPhone** (Compartir → Agregar a inicio): `manifest.webmanifest`, `icon-180.png` y
   modo standalone. Los PNG salen de `web/static/icons/icon.svg` con `tools/icons.sh` (solo en la Mac).
+- **Ajustes → Sistema** (2026-09-11): temperatura, lugar libre, aviso si la Pi recortó por tensión o calor
+  (`vcgencmd get_throttled`) y botones para **apagar y reiniciar** la Pi (`sudo systemctl poweroff|reboot`,
+  nunca mientras suena). Apagar bien importa: cortar la corriente de golpe puede arruinar la SD.
+- **La set list editada se recarga sola** (2026-09-11): el engine trabaja con su copia en memoria, así que
+  guardar en el editor no cambiaba el show. Se notaba feo: el show seguía con la lista vieja, con Siguiente y
+  Anterior apagados y sin las canciones nuevas (le pasó a Cristian). Ahora, al guardar, si es la set list
+  cargada y está parado, la web la recarga sola.
 - Falta: elegir el perfil de hardware (hoy solo se ve cuál está activo en `/api/info`).
 
 ### Fase 4 — Controles físicos
@@ -308,6 +316,11 @@ real de la banda ("There is a Place", H.264 720p30, 7,4 Mbps, AAC 44,1 kHz, 4:30
   Ajustes → Pantalla HDMI y cambiarla reinicia solo mpv (no el engine ni el iRig). **No usar
   `--drm-draw-surface-size`**: con la capa de mpv más chica que la pantalla, el video queda tapado.
   Pendiente: que Cristian confirme el video en 1920x1080 con la proporción bien.
+- **Ancho y alto por separado** (2026-09-11, pedido de Cristian): la escala única pasó a ser dos, ancho y alto
+  (50–120 %), con `video-scale-x` / `video-scale-y` de mpv, para compensar pantallas de escenario que deforman
+  (la misma pantalla estira a lo ancho o a lo alto). En la web se mueven juntas salvo que se destilde "Mover
+  ancho y alto juntos". El `scale` de antes se sigue leyendo (se copia a los dos ejes). **Ojo: mpv ignora
+  escala y posición con `keepaspect=no`**, o sea en modo Estirar.
 - **Encaje ajustable** (Ajustes → Pantalla HDMI): Ajustar / Llenar / Estirar, escala 50–120 % y posición
   ±50 % (con ±20 % no alcanzaba para ubicar libremente), en vivo sobre mpv y guardado en `config.json`
   (`video_fit`). Patrón de ajuste 16:9 (borde blanco, zona segura del 5 % en rojo) para compensar el
