@@ -10,6 +10,8 @@
     python -m engine.cli setlist block NOMBRE BLOQUE DESDE HASTA [--behavior B] [--wait S]
     python -m engine.cli show NOMBRE [--profile P] [--device D]      tocar la set list con el teclado
     python -m engine.cli play ARCHIVO... [--profile P] [--seconds N]  prueba de audio (soak)
+    python -m engine.cli ctl COMANDO [ARG]     hablarle al engine en servicio: state, load NOMBRE,
+                                               play, pause, play_pause, stop, next, prev, goto N, watch
 
 Las canciones se nombran por su slug (ver `songs`). Los números de canción empiezan en 1.
 """
@@ -196,6 +198,34 @@ def cmd_play(a):
     print(f"FIN pos={player.position / SAMPLERATE:.1f}s xruns={player.underflows} starved={player.starved}")
 
 
+def cmd_ctl(a):
+    import json
+    import socket
+
+    from .daemon import socket_path
+
+    req = {"cmd": "subscribe" if a.command == "watch" else a.command}
+    if a.command == "load":
+        req["setlist"] = a.arg
+    elif a.command == "goto":
+        req["index"] = int(a.arg) - 1
+    with socket.socket(socket.AF_UNIX) as sock:
+        try:
+            sock.connect(str(socket_path()))
+        except OSError:
+            _die(f"El engine no está corriendo ({socket_path()})")
+        sock.sendall((json.dumps(req) + "\n").encode())
+        f = sock.makefile(encoding="utf-8")
+        for line in f:
+            msg = json.loads(line)
+            if "state" in msg:
+                _print_state(msg["state"])
+            elif not msg["ok"]:
+                _die(msg["error"])
+            if a.command != "watch":
+                break
+
+
 def _behavior_args(p, behavior, wait):
     p.add_argument("--behavior", choices=list(setlists.BEHAVIORS), default=behavior,
                    help="; ".join(f"{k} = {v}" for k, v in setlists.BEHAVIORS.items()))
@@ -251,6 +281,12 @@ def main():
         p.add_argument("--profile", default=profiles.DEFAULT, choices=list(profiles.PROFILES))
         p.add_argument("--device", help="pisar el device del perfil")
         p.set_defaults(fn=fn)
+
+    p = sub.add_parser("ctl", help="hablarle al engine en servicio")
+    p.add_argument("command", choices=["state", "load", "play", "pause", "play_pause", "stop",
+                                       "next", "prev", "goto", "watch"])
+    p.add_argument("arg", nargs="?", help="nombre de la set list (load) o número de canción (goto)")
+    p.set_defaults(fn=cmd_ctl)
 
     a = ap.parse_args()
     a.fn(a)

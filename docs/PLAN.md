@@ -366,6 +366,19 @@ Reglas que salen de acá:
     un set entero seguido, stream siempre abierto, sin carga artificial. Si aguanta, se avanza con
     reglas (cero I/O pesada durante el show). Si no: `dwc_otg.speed=1` (lado USB: todo en full
     speed, sin transaction translator).
+11. **Soak con WAV real en la Pi**: set 1, 29 min (7 canciones) sin cortes. Set 2 **sin ninguna
+    interacción** (sin pisadas, sin MIDI hacia el iRig): engine sano todo el tiempo (0 xruns, ALSA
+    consumiendo a 48 kHz, sin errores USB), pero a los **~25 min el iRig se silenció solo**, sin carga.
+    → **Pi 3B+ + iRig no es viable para vivo tal como está.**
+12. Al desenchufar el iRig, el engine **se queda colgado en silencio** (la posición se congela, sin
+    error). La reconexión automática tiene que detectar también ese estado.
+13. **Mismo set con el iRig en la Mac** (mismo engine, mismo archivo): en curso. Si aguanta, la
+    culpable es la Pi 3B+ → probar `dwc_otg.speed=1` (gratis) y, si no alcanza, Pi 4. Si falla, el
+    sospechoso es el iRig y otra Pi no lo arreglaría.
+14. Guía externa de optimización revisada: los parámetros FIQ que propone ya son los de fábrica,
+    lo de PipeWire/WirePlumber no aplica (ALSA directo), la prioridad RT no ataca esto (0 xruns
+    siempre) y `alsactl init` no destraba el firmware del iRig. PipeWire o JACK tampoco: usan el
+    mismo driver y el mismo controlador USB.
     Si no alcanza, dos caminos:
     - **Raspberry Pi 4**: controlador USB xHCI, sin los problemas de `dwc_otg`. El código corre igual.
     - **Seguir con la 3B+ con reglas**: cero I/O pesada durante el show + soak test realista de

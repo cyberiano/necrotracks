@@ -1,0 +1,19 @@
+[Unit]
+Description=Necrotracks engine (audio y show)
+After=sound.target
+
+[Service]
+User=@USER@
+WorkingDirectory=/opt/necrotracks
+ExecStart=/opt/necrotracks/.venv/bin/python -m engine.daemon
+Environment=PYTHONUNBUFFERED=1
+# Sin el iRig conectado el engine sale: systemd reintenta hasta que aparezca.
+Restart=always
+RestartSec=2
+# Prioridad de tiempo real para el hilo de audio (se pide desde el propio hilo)
+LimitRTPRIO=95
+LimitMEMLOCK=infinity
+Nice=-5
+
+[Install]
+WantedBy=multi-user.target

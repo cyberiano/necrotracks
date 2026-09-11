@@ -5,6 +5,7 @@ de salida nunca se detiene y play/stop/pausa no reconfiguran el device (el iRig 
 bien las reconfiguraciones, ver docs/PLAN.md).
 """
 import logging
+import os
 import queue
 import threading
 
@@ -19,6 +20,15 @@ RENDER_CHANNELS = 4  # FOH L, FOH R, Click, Guía
 BLOCK = 1024
 FADE = int(0.010 * SAMPLERATE)
 PREFILL_BLOCKS = int(0.5 * SAMPLERATE / BLOCK)  # buffer mínimo antes de arrancar
+
+
+def _set_realtime(priority=70):
+    """SCHED_FIFO para el hilo que la llama (Linux). Requiere LimitRTPRIO en el servicio."""
+    try:
+        os.sched_setscheduler(0, os.SCHED_FIFO, os.sched_param(priority))
+        log.info("hilo de audio con prioridad de tiempo real %d", priority)
+    except (AttributeError, PermissionError, OSError) as e:
+        log.info("hilo de audio sin prioridad de tiempo real (%s)", e.__class__.__name__)
 
 
 def find_device(name):
@@ -101,6 +111,7 @@ class Player:
         self.stream.close()
 
     def _audio_loop(self):
+        _set_realtime()
         silence = np.zeros((BLOCK, self.outputs), np.float32)
         ramp = np.linspace(0, 1, FADE, dtype=np.float32)[:, None]
         cur = None  # (cola, evento de stop, evento de prefill) de la canción en curso
