@@ -259,7 +259,15 @@ Reglas que salen de acá:
    - Carga de CPU 3,5 min (47–58 °C): **aguanta**. 0 underruns, 2 luces verdes, tono suave.
    - Escritura fuerte a la SD: **se traba igual** (ruido y después apagado; 13 underruns).
    → **Usar siempre el par de puertos lejos del Ethernet.** La SD sigue siendo el problema.
-9. **Próximo**: `dtparam=sd_force_pio=on` en config.txt. La SD (`sdhost-bcm2835`) deja de usar
-   DMA y no compite con el USB. Costo: más CPU en I/O de la SD (irrelevante a 576 KB/s).
-   Si no alcanza: `dwc_otg.speed=1`, después 16-bit.
-   Si nada alcanza: **Raspberry Pi 4** (controlador USB xHCI, sin los problemas de `dwc_otg`).
+9. **SD sin DMA**: `sd_force_pio=on` llega al DT (`brcm,force-pio`) pero el driver lo ignora
+   (`DMA enabled`). `sd_pio_limit=65535` sí se aplica (`DMA enabled (>65535)` = nunca DMA).
+   Con escritura fuerte a ~16 MB/s en PIO (load 3.2, 9 underruns): **se traba exactamente igual.**
+   → **DMA descartado.** Ajustes revertidos (costaban CPU sin beneficio).
+   Nota: `dtparam` después de un `dtoverlay` se aplica a ese overlay → el bootstrap ahora usa
+   `base_param()` (antes, `i2c_arm_baudrate` nunca se aplicaba).
+10. **Próximo**: `dwc_otg.speed=1` (lado USB: todo en full speed, sin transaction translator).
+    Si no alcanza, dos caminos:
+    - **Raspberry Pi 4**: controlador USB xHCI, sin los problemas de `dwc_otg`. El código corre igual.
+    - **Seguir con la 3B+ con reglas**: cero I/O pesada durante el show + soak test realista de
+      60 min (engine con canciones reales, web abierta). Riesgo: si igual se traba en vivo, saca
+      basura al PA y nada lo detecta.
