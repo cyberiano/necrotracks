@@ -212,3 +212,26 @@ Pendiente:
      (=65534), cval->res is probably wrong"*), y el "0 dB" que fijamos es en realidad ganancia alta
   3. El vúmetro no está midiendo nuestro stream
 - Formato negociado: S24_3LE, 48 kHz, 2 ch, period 2048, buffer 6144 (128 ms).
+
+### Diagnóstico del clipping: **el que se cuelga es el iRig** (2026-09-10)
+
+- Linux y el driver sanos: el puntero de ALSA avanza a ~48 000 frames/s, `aplay` termina en
+  tiempo exacto, mixer en 0 dB sin mute. El vúmetro sí mide la salida USB (escalera de −40 a −3 dB:
+  1 → 2 → 3 luces tras reenchufar).
+- **El iRig se colgó 3 veces**, siempre con escritura fuerte a la SD. Una vez tocando el engine
+  (que reportó 0 xruns) y dos con `aplay` (6–7 underruns). Síntoma en el kernel:
+  `usb_set_interface failed (-32)` / `cannot set freq 48000 to ep 0x1`. Colgado, saca basura a
+  full scale (rojo) o nada. **Solo vuelve desenchufándolo.**
+- Un corte forzado de 1 s **sin carga**: 1 underrun, sin error USB, no se colgó.
+- Hipótesis: con la Pi bajo carga fuerte (IRQ/CPU), una reconfiguración del stream o transferencias
+  isócronas tardías hacen fallar al firmware del iRig.
+- `aplay` (el reproductor estándar) también corta con la SD saturada: no es un problema de Python.
+
+Reglas que salen de acá:
+1. Durante la reproducción no hay I/O pesada (import bloqueado mientras suena).
+2. El stream de audio se abre una vez y no se reconfigura nunca durante un show.
+3. Buffer grande, hilo de audio con prioridad de tiempo real.
+4. Detectar el cuelgue (errores del device / dmesg) y mostrar "Reconectar iRig" en OLED y web:
+   la Pi no puede revivirlo sola.
+5. **Pendiente**: engine con buffer de 20 s bajo la misma carga. Si igual cuelga el iRig,
+   evaluar 16-bit y prioridad RT antes de seguir.
