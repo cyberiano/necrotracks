@@ -36,11 +36,13 @@ en "Diagnóstico del clipping" más abajo.
 - **Web (Fase 3) en la Pi**: `http://192.168.1.32` desde el celular. Show Mode con audio y el tiempo
   en vivo; import de una canción real de la banda ("I will not spoil", 5:14, convertida de 44,1 a
   48 kHz) desde la web, y suena.
+- **Footswitches del iRig (Fase 4)**: los 4 manejan el show con el mapa por defecto; ~30 pisadas en el
+  journal, cada una llegó una sola vez (la más cercana a 530 ms de la anterior: dos pisadas reales).
 
 **Próximos pasos, en orden:**
 1. **Usarla en un ensayo** (el primer uso real) manejándola desde la web. Si se traba → Raspberry Pi 4.
-2. **Fase 4: controles**: MIDI Learn con antirrebote (mapa del iRig más abajo), LEDs de los
-   footswitches como indicador de estado, OLED SH1106 + encoder, botones GPIO.
+2. **Fase 4, lo que falta**: LEDs de los footswitches como indicador de estado, OLED SH1106 +
+   encoder, botones GPIO (los footswitches y el MIDI Learn ya están).
 3. Fase 5 (hotspot, chequeo pre-show en la UI, pánico, apagado seguro) y Fase 6 (MIDI de automatización).
 
 **Pendientes y deudas:**
@@ -210,6 +212,17 @@ MIDI in + **MIDI Learn** (footswitches del iRig → Play/Stop/Next/Prev).
 El learn debe ignorar CC continuos para que el pedal de expresión no se mapee solo.
 3 botones GPIO: **apagado seguro** (2 s), **hotspot on/off**, **pánico**.
 Encoder rotativo + OLED: setlist activa, canción actual, próxima, tiempo, estado, IP/SSID.
+
+**Estado (2026-09-11): footswitches hechos y probados en la Pi.** `engine/controls.py`, dentro del engine
+(hilo de MIDI → `show.send`): anda aunque se caiga la web.
+- Mapa por defecto del iRig, canal 1, en los dos modos: FS1 = Anterior (PC 0 / CC 20), FS2 = Siguiente
+  (PC 1 / CC 21), FS3 = Stop (PC 2 / CC 22), FS4 = Play/Pausa (PC 3 / CC 23). Se guarda en `config.json`.
+- MIDI Learn en la web (pestaña Controles): la pisada que se aprende no dispara la acción; un control =
+  una acción, una acción puede tener varios controles. Muestra la última pisada recibida.
+- Antirrebote de 200 ms por control. Un CC que manda valores distintos de 0/127 es continuo (pedal de
+  expresión) y nunca cuenta como pisada.
+- El puerto se busca por nombre (`iRig Stomp IO MIDI 1`); si no está, reintenta cada 5 s.
+- Falta: LEDs de los footswitches (valores de verde/rojo sin encontrar), OLED + encoder y botones GPIO.
 
 ### Fase 5 — Red y robustez
 Hotspot es la **única red en ensayo y show** → el toggle es crítico, no cómodo.
