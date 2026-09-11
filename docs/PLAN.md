@@ -233,5 +233,7 @@ Reglas que salen de acá:
 3. Buffer grande, hilo de audio con prioridad de tiempo real.
 4. Detectar el cuelgue (errores del device / dmesg) y mostrar "Reconectar iRig" en OLED y web:
    la Pi no puede revivirlo sola.
-5. **Pendiente**: engine con buffer de 20 s bajo la misma carga. Si igual cuelga el iRig,
-   evaluar 16-bit y prioridad RT antes de seguir.
+5. ~~Pendiente: engine con buffer de 20 s bajo la misma carga~~ → **limpio**: 90 s, escritura
+   fuerte a la SD durante 40 s, load hasta 2.05, `xruns=0 starved=0`, sin errores USB.
+   Ojo: se cambió el cable USB del iRig justo antes (21:31). Sin separar todavía cuánto aportó
+   el cable y cuánto el buffer.
