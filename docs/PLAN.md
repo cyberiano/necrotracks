@@ -238,3 +238,15 @@ Reglas que salen de acá:
    (todas las luces con un tono de −12 dB) → el iRig sacó basura igual.
    **Ni los contadores del engine ni dmesg detectan el cuelgue.** El único indicador confiable
    hoy es el vúmetro. El cable nuevo no lo resolvió.
+6. **Descartes** (cada prueba con el iRig recién reenchufado y un tono fijo de −12 dB):
+   - Alimentación: con **fuente externa** el iRig se cuelga igual.
+   - Cable USB: se cuelga igual con cable nuevo.
+   - Ethernet (comparte el hub USB interno con el iRig): **desconectado**, se cuelga igual.
+   - Python: con `aplay` pasa lo mismo.
+   - `throttled=0x0` desde el arranque: la Pi nunca detectó baja tensión.
+   Patrón: con escritura fuerte a la SD el vúmetro sube a rojo y baja varias veces (basura), y
+   al rato queda apagado. **No se recupera al cortar la carga**: solo desenchufando.
+   Topología: iRig USB 1.1 (12M) detrás del hub interno USB 2.0, junto al lan78xx.
+   Controlador `dwc_otg`, `fiq_fsm_mask=15`, `speed=-1`.
+7. **Pendiente**: ¿lo cuelga cualquier carga fuerte (CPU) o solo la escritura a la SD?
+   Después, probar `dwc_otg.speed=1` (todo el USB en full speed, sin transaction translator).
