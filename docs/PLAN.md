@@ -42,7 +42,8 @@ en "Diagnóstico del clipping" más abajo.
 - **Hotspot WiFi** (`bin/remote/hotspot.sh`, `necrotracks-hotspot.service`): red "Necrotracks" (WPA2, la
   clave no está en el repo: `HOTSPOT_PSK` la primera vez), 5 GHz canal 36, la Pi en 192.168.4.1 y
   `necrotracks.local` también por DNS. Se levanta solo si al arrancar no hay WiFi conocida en ~45 s.
-  Perfil creado en la Pi; **falta probarlo con el iPhone** (Cristian no estaba en casa).
+  **Probado con el iPhone (2026-09-11)**: se conectó, la app instalada abrió y se usó; al desconectarse, la
+  Pi volvió sola a Akasha. Falta verlo arrancar solo sin WiFi conocida (en la sala de ensayo).
 - **Jack de la Pi como respaldo** (perfil `pi-jack`, `fallback` en `config.json`): si al arrancar no está
   la placa del perfil elegido, sale por el jack; cuando vuelve, con la reproducción parada, el engine se
   reinicia para usarla. La web lo avisa en el Show y se elige en Ajustes. En la Pi (bootstrap + reinicio):
@@ -285,6 +286,10 @@ real de la banda ("There is a Place", H.264 720p30, 7,4 Mbps, AAC 44,1 kHz, 4:30
   en 80 ms para corregir y 30 ms para soltar, con ganancia 0,5 y ±3 % de velocidad. Estable: el video va
   ~110 ms detrás de la posición del engine, que es la latencia de la salida (lo que tiene que compensar).
   mpv tarda ~330 ms en arrancar un video: carga con ese adelanto (`LOAD_LEAD`).
+- **Pantalla negra con audio** (primera prueba con Cristian mirando): con las capas por defecto de mpv el
+  video queda tapado. En la Pi va `--drm-draw-plane=overlay --drm-drmprime-video-plane=primary` (el video
+  en la primaria, lo que dibuja mpv arriba), y con un video cargado el fondo de arriba es transparente
+  (`background-color=#00000000`, solo para ese archivo). Así se ve (confirmado por Cristian, ~11–20 % CPU).
 **Falta la prueba que decide**: 30 min con el engine sonando por el iRig y el video, con Cristian mirando
 el vúmetro (y el proyector: que el logo se vea bien y el video vaya con el click). Si traba, Pi 4.
 

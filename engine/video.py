@@ -21,12 +21,17 @@ from pathlib import Path
 
 log = logging.getLogger(__name__)
 
-# --background=color: por defecto mpv dibuja un damero detrás de las imágenes con transparencia (el logo).
+# Capas de la pantalla: en la Pi el video decodificado va en la primaria y lo que dibuja mpv (logo, fondo)
+# en la de arriba; con el orden por defecto de mpv el video queda tapado (pantalla negra con audio).
+# --background=color: por defecto mpv dibuja un damero detrás de lo transparente. Negro para el logo;
+# con un video, la capa de arriba se vuelve transparente (ver VIDEO_OPTS) para que se vea el de abajo.
 MPV_ARGS = ["--vo=gpu", "--gpu-context=drm", "--hwdec=v4l2m2m", "--no-audio", "--idle=yes", "--force-window=yes",
+            "--drm-draw-plane=overlay", "--drm-drmprime-video-plane=primary",
             "--background=color", "--background-color=#000000",
             "--keep-open=yes", "--image-display-duration=inf", "--osd-level=0", "--no-osc",
             "--no-input-default-bindings", "--really-quiet"]
 LOGO_ZOOM = -0.9  # log2 del tamaño: el logo a ~54 % del ancho, centrado sobre negro
+VIDEO_OPTS = "video-zoom=0,background-color=#00000000"  # solo mientras dura el archivo de video
 SEEK = 0.3  # segundos de desfase para saltar
 # Un cuadro dura 33 ms: con menos margen que eso, la corrección persigue ruido de medición.
 TOLERANCE = 0.08  # desfase para empezar a corregir con la velocidad…
@@ -150,7 +155,7 @@ class Video:
             if want:
                 start = target if paused else target + LOAD_LEAD
                 self.mpv.command("loadfile", str(want), "replace", -1,
-                                 f"start={start:.3f},video-zoom=0,pause={'yes' if paused else 'no'}")
+                                 f"start={start:.3f},{VIDEO_OPTS},pause={'yes' if paused else 'no'}")
                 self.paused = paused
             elif self.logo.exists():
                 self.mpv.command("loadfile", str(self.logo), "replace", -1, f"video-zoom={LOGO_ZOOM},pause=no")

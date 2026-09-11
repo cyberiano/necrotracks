@@ -22,7 +22,8 @@ sock = "/tmp/mpv-proto.sock"
 args = ["mpv", f"--vo={vo}", f"--hwdec={hwdec}", "--no-audio", "--loop-file=inf", "--really-quiet",
         f"--input-ipc-server={sock}", video]
 if vo == "gpu":
-    args.insert(2, "--gpu-context=drm")
+    # En la Pi el video va en la capa primaria y el dibujo de mpv arriba: si no, pantalla negra.
+    args[2:2] = ["--gpu-context=drm", "--drm-draw-plane=overlay", "--drm-drmprime-video-plane=primary"]
 p = subprocess.Popen(args, stderr=subprocess.PIPE, text=True)
 hz = os.sysconf("SC_CLK_TCK")
 
