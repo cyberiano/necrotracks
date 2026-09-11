@@ -124,7 +124,10 @@ def fake_nmcli(calls):
     def run(cmd, **kw):
         calls.append(cmd)
         assert cmd[0] in ("sudo", "nmcli")
-        return FakeRun(NMCLI.get(tuple(cmd[cmd.index("nmcli") + 1:]), ""))
+        args = cmd[cmd.index("nmcli") + 1:]
+        if "--rescan" in args:  # la clave de la tabla es la lista, sin el modo de escaneo
+            args = args[:args.index("--rescan")]
+        return FakeRun(NMCLI.get(tuple(args), ""))
     return run
 
 
@@ -132,6 +135,12 @@ def test_wifi(client, monkeypatch):
     calls = []
     monkeypatch.setattr(web.subprocess, "run", fake_nmcli(calls))
     w = client.get("/api/wifi").json()
+    # Sin sudo nmcli no escanea: contesta la caché, que puede tener solo la red conectada (visto en la Pi)
+    assert ["sudo", "-n", "nmcli", "-t", "-f", "IN-USE,SSID,SIGNAL,SECURITY", "device", "wifi", "list",
+            "--rescan", "auto"] in calls
+    calls.clear()
+    client.get("/api/wifi?rescan=1")  # el botón "Buscar redes" fuerza el escaneo
+    assert any(c[-2:] == ["--rescan", "yes"] for c in calls)
     assert (w["available"], w["ssid"], w["ip"]) == (True, "Akasha", "192.168.1.32")
     assert [(n["ssid"], n["signal"]) for n in w["networks"]] == [("Akasha", 79), ("Sala: ensayo", 66)]  # sin repetir
     assert w["saved"] == [{"name": "netplan-wlan0-Akasha", "active": True},

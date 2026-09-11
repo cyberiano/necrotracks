@@ -242,6 +242,7 @@ async def post_idle_fit(body: FitIn):
 
 HOTSPOT = "necrotracks-hotspot"
 WIFI_CONNECT_TIMEOUT = 45
+WIFI_SCAN_TIMEOUT = 30  # un escaneo forzado tarda unos segundos
 
 
 def _terse(line):
@@ -286,15 +287,20 @@ def _wifi_ip(device):
 
 
 @app.get("/api/wifi")
-def get_wifi():
+def get_wifi(rescan: bool = False):
     try:
         device, state = _wifi_device()
     except (OSError, subprocess.SubprocessError):
         device = None  # sin NetworkManager (p. ej. la Mac)
     if not device:
         return {"available": False, "networks": [], "saved": []}
+    # Sin sudo, nmcli NO escanea: contesta lo que tiene en caché, que puede ser solo la red conectada
+    # (probado en la Pi: sin sudo, 1 red; con sudo y escaneo, 10). "yes" = escanear ahora (tarda unos
+    # segundos, es el botón "Buscar redes"); "auto" = escanear si la caché está vieja.
+    listing = _nmcli("-t", "-f", "IN-USE,SSID,SIGNAL,SECURITY", "device", "wifi", "list",
+                     "--rescan", "yes" if rescan else "auto", sudo=True, timeout=WIFI_SCAN_TIMEOUT)
     best, ssid = {}, None
-    for line in _nmcli("-t", "-f", "IN-USE,SSID,SIGNAL,SECURITY", "device", "wifi", "list").splitlines():
+    for line in listing.splitlines():
         use, name, signal, security = _fields(line, 4)
         if not name:
             continue  # redes ocultas: no se listan

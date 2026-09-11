@@ -938,7 +938,12 @@ function viewSettings() {
   // Red WiFi
   async function loadWifi(rescan = false) {
     let w;
-    try { w = await api('GET', '/api/wifi'); } catch (e) { $('#wifi-now').textContent = e.message; return; }
+    const scan = $('#wifi-scan');
+    // El escaneo forzado tarda unos segundos: se avisa y no se puede pedir dos veces
+    if (rescan && scan) { scan.disabled = true; $('#wifi-nets').innerHTML = '<span class="muted small">Buscando redes…</span>'; }
+    try { w = await api('GET', '/api/wifi' + (rescan ? '?rescan=1' : '')); }
+    catch (e) { if ($('#wifi-now')) $('#wifi-now').textContent = e.message; return; }
+    finally { if (scan) scan.disabled = false; }
     if (!$('#wifi-now')) return;
     if (!w.available) {
       $('#wifi-now').innerHTML = `<span class="chip warn">${ic('alert')}Sin WiFi</span><span>No hay una placa WiFi manejada por NetworkManager.</span>`;
