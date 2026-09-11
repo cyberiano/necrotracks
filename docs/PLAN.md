@@ -273,9 +273,15 @@ real de la banda ("There is a Place", H.264 720p30, 7,4 Mbps, AAC 44,1 kHz, 4:30
 - Import por CLI: 169 s (casi todo es copiar el video a la SD con el tope de 3 MB/s).
 - Sonando (por el jack, en silencio): video por hardware, mpv ~17 % de CPU, load 0,9. Stop → logo.
 - El logo sale de `/var/lib/necrotracks/video-logo.png` (datos, no repo), achicado (`video-zoom=-0.9`).
-  mpv 0.40 dibuja un **damero** detrás de lo transparente por defecto: va `--background=color`.
+  mpv 0.40 dibuja un **damero** detrás de lo transparente por defecto: va `--background=color` y, además,
+  el engine lo aplana sobre negro con ffmpeg al arrancar (`/dev/shm/necrotracks/video-logo-plano.png`).
+  Captura del HDMI: esquina negra opaca (0,0,0,255). Ojo: `screenshot-to-file … window` estira la imagen
+  a la pantalla e ignora zoom y proporción; la geometría real está en la propiedad `osd-dimensions`
+  (con el monitor de 1024×768: márgenes de ~237 px, el logo a 548×295 centrado, proporción respetada).
 - Sincronía: con tolerancia de 40 ms la velocidad iba y venía (1,05/0,95): un cuadro son 33 ms. Queda
-  en 80 ms para corregir y 30 ms para soltar, con ganancia 0,5 y ±3 % de velocidad.
+  en 80 ms para corregir y 30 ms para soltar, con ganancia 0,5 y ±3 % de velocidad. Estable: el video va
+  ~110 ms detrás de la posición del engine, que es la latencia de la salida (lo que tiene que compensar).
+  mpv tarda ~330 ms en arrancar un video: carga con ese adelanto (`LOAD_LEAD`).
 **Falta la prueba que decide**: 30 min con el engine sonando por el iRig y el video, con Cristian mirando
 el vúmetro (y el proyector: que el logo se vea bien y el video vaya con el click). Si traba, Pi 4.
 

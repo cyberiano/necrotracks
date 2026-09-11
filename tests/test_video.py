@@ -59,8 +59,8 @@ def test_video_sigue_al_audio(tmp_path):
     v, mpv, clock, logo = make(tmp_path)
     v.step(st("stopped"))
     v.step(st("playing", pos=0.5))
-    # posición 0,5 − latencia 0,1 + 0,15 de adelanto por lo que tarda mpv en arrancar
-    assert mpv.cmds[-1] == ("loadfile", "/v/uno.mp4", "replace", -1, "start=0.550,video-zoom=0,pause=no")
+    # posición 0,5 − latencia 0,1 + 0,33 de adelanto por lo que tarda mpv en arrancar
+    assert mpv.cmds[-1] == ("loadfile", "/v/uno.mp4", "replace", -1, "start=0.730,video-zoom=0,pause=no")
     v.step(st("paused", pos=0.8))
     assert mpv.cmds[-1] == ("set_property", "pause", True)
     v.step(st("playing", pos=0.8))
