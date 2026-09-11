@@ -1,0 +1,8 @@
+[Plymouth Theme]
+Name=Necrotracks
+Description=Logo de Necrotracks sobre negro mientras arranca la Pi
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/necrotracks
+ScriptFile=/usr/share/plymouth/themes/necrotracks/necrotracks.script

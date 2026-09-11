@@ -10,3 +10,9 @@ for size in 180 192 512; do
   sips -z "$size" "$size" "$tmp/icon.svg.png" --out "icon-$size.png" > /dev/null
 done
 ls -la icon-*.png
+
+# Pantalla de arranque (Plymouth), desde bin/remote/splash/necrotracks.svg
+cd ../../../bin/remote/splash
+qlmanage -t -s 1200 -o "$tmp" necrotracks.svg > /dev/null
+cp "$tmp/necrotracks.svg.png" necrotracks.png
+ls -la necrotracks.png

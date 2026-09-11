@@ -1,0 +1,11 @@
+# Plymouth: fondo negro y el logo de Necrotracks centrado, al 80 % del lado corto de la pantalla
+# (la imagen es cuadrada y el logo ocupa su centro, así que queda de un tamaño razonable en cualquier resolución).
+Window.SetBackgroundTopColor(0, 0, 0);
+Window.SetBackgroundBottomColor(0, 0, 0);
+
+logo = Image("logo.png");
+side = Math.Min(Window.GetWidth(), Window.GetHeight()) * 0.8;
+logo = logo.Scale(side, side);
+sprite = Sprite(logo);
+sprite.SetX(Window.GetX() + (Window.GetWidth() - side) / 2);
+sprite.SetY(Window.GetY() + (Window.GetHeight() - side) / 2);

@@ -44,6 +44,21 @@ cmdline_param() {
   REBOOT=1
 }
 
+# Reemplaza un parámetro de cmdline.txt por otro, con la misma red de seguridad que cmdline_param.
+cmdline_replace() {
+  local c="${CMDLINE:-/boot/firmware/cmdline.txt}" b
+  grep -qw -- "$1" "$c" || return 0
+  b="$c.bak-$(date +%Y%m%d-%H%M%S)"
+  cp "$c" "$b"
+  sed -i "1 s/\(^\| \)$1\( \|\$\)/\1$2\2/" "$c"
+  if [ "$(wc -l < "$c")" -gt 1 ] || ! grep -q "root=" "$c" || ! grep -qw -- "$2" "$c" || grep -qw -- "$1" "$c"; then
+    cp "$b" "$c"
+    echo "   cmdline.txt quedó mal: se restauró la copia"
+    return 1
+  fi
+  REBOOT=1
+}
+
 log "I2C (OLED) y SPI"
 [ -e /dev/i2c-1 ] || REBOOT=1
 raspi-config nonint do_i2c 0
@@ -104,6 +119,25 @@ sudo -u "$NT_USER" "$APP/.venv/bin/pip" install -q -r "$APP/requirements.txt"
 
 log "Hotspot WiFi (se levanta solo si al arrancar no hay una WiFi conocida)"
 HOTSPOT_PSK="${HOTSPOT_PSK:-}" bash "$APP/bin/remote/hotspot.sh"
+
+log "Arranque: logo de Necrotracks (Plymouth), sin arcoíris ni mensajes; tty1 en negro (login en Ctrl+Alt+F2)"
+DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends plymouth
+T=/usr/share/plymouth/themes/necrotracks
+install -d "$T"
+install -m 644 "$APP/bin/remote/splash/necrotracks.plymouth" "$APP/bin/remote/splash/necrotracks.script" "$T/"
+install -m 644 "$APP/bin/remote/splash/necrotracks.png" "$T/logo.png"
+if [ "$(plymouth-set-default-theme)" != necrotracks ]; then
+  plymouth-set-default-theme necrotracks
+  update-initramfs -u > /dev/null
+  REBOOT=1
+fi
+grep -qxF 'disable_splash=1' "$CFG" || { echo 'disable_splash=1' >> "$CFG"; REBOOT=1; }
+# La pantalla del show (tty1) queda negra: los mensajes del kernel van a la tty3, sin cursor ni login.
+cmdline_replace "console=tty1" "console=tty3"
+for p in quiet splash plymouth.ignore-serial-consoles loglevel=3 logo.nologo vt.global_cursor_default=0 consoleblank=0; do
+  cmdline_param "$p"
+done
+systemctl disable --now getty@tty1.service 2>/dev/null || true
 
 log "Volúmenes digitales fijos en 0 dB (iRig y jack)"
 if amixer -c IO sget 'USB Streaming' > /dev/null 2>&1; then
