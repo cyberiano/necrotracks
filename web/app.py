@@ -654,7 +654,10 @@ def get_setlist_pdf(slug: str, mode: str = "piso"):
         from .pdf import setlist_pdf
     except ImportError:  # falta fpdf2 (deploy viejo): que se entienda, en vez de un 500
         raise HTTPException(503, "Falta la librería de PDF en la Pi: corré bin/deploy.sh sin --fast") from None
-    return Response(setlist_pdf(sl, mode, setlists.BEHAVIORS), media_type="application/pdf",
+    # octet-stream a propósito: con application/pdf, el iPhone lo abre en su visor. Adentro de la web
+    # instalada en el inicio eso es una trampa: ocupa toda la pantalla, sin botones y sin forma de volver
+    # (hay que cerrar la app). Así el navegador lo baja en vez de mostrarlo.
+    return Response(setlist_pdf(sl, mode, setlists.BEHAVIORS), media_type="application/octet-stream",
                     headers={"Content-Disposition": f'attachment; filename="{slug}-{mode}.pdf"'})
 
 

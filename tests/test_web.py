@@ -72,7 +72,9 @@ def test_setlist_en_pdf(client, tmp_path):
     setlists.create("Ensayo del viernes", ["necropolis"])
     for mode in ("piso", "tecnica"):
         r = client.get(f"/api/setlists/ensayo-del-viernes/pdf?mode={mode}")
-        assert r.status_code == 200 and r.headers["content-type"] == "application/pdf"
+        # octet-stream a propósito: con application/pdf el iPhone lo abre en su visor, y adentro de la web
+        # instalada en el inicio eso deja la app trabada, sin botones y sin forma de volver
+        assert r.status_code == 200 and r.headers["content-type"] == "application/octet-stream"
         assert f"ensayo-del-viernes-{mode}.pdf" in r.headers["content-disposition"]
         assert r.content.startswith(b"%PDF") and len(r.content) > 800
     assert client.get("/api/setlists/ensayo-del-viernes/pdf?mode=volar").status_code == 400

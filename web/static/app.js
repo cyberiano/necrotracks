@@ -9,6 +9,9 @@ const pad2 = n => String(n).padStart(2, '0');
 const ic = (name, cls = '') => `<svg class="ic${cls ? ' ' + cls : ''}" aria-hidden="true"><use href="#i-${name}"/></svg>`;
 const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 const STATE_LABEL = {stopped: 'Parado', playing: 'Sonando', paused: 'En pausa', waiting: 'Esperando'};
+// Instalada en el inicio del iPhone: no hay barra del navegador, así que una navegación que no vuelve
+// (por ejemplo abrir un PDF) deja la app trabada y hay que cerrarla.
+const standalone = () => window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
 
 let info = null;
 const live = {engine: null, state: null, at: 0};
@@ -639,7 +642,8 @@ function viewPrint(slug) {
             <button data-mode="piso" class="${mode === 'piso' ? 'on' : ''}">Para el piso</button>
             <button data-mode="tecnica" class="${mode === 'tecnica' ? 'on' : ''}">Técnica</button>
           </div>
-          <a class="btn primary" id="pr-pdf" href="/api/setlists/${encodeURIComponent(slug)}/pdf?mode=${mode === 'piso' ? 'piso' : 'tecnica'}" target="_blank" rel="noopener">${ic('download')}Descargar PDF</a>
+          <a class="btn primary" id="pr-pdf" download="${esc(slug)}-${mode === 'piso' ? 'piso' : 'tecnica'}.pdf"
+            href="/api/setlists/${encodeURIComponent(slug)}/pdf?mode=${mode === 'piso' ? 'piso' : 'tecnica'}">${ic('download')}Descargar PDF</a>
           <button id="pr-print" class="btn">${ic('print')}Imprimir</button>
         </div>
         ${mode === 'piso' ? floorSheet() : techSheet()}
@@ -649,14 +653,32 @@ function viewPrint(slug) {
           <div class="actions"><button id="pr-copy" class="btn">${ic('copy')}Copiar</button>
             <span class="muted small">Si no copia, tocá el texto, seleccioná todo y copiá a mano.</span></div>
         </div>
-        <p class="fine">Descargar PDF lo arma la Pi y sirve en cualquier lado (en el iPhone: Compartir →
-          Guardar en Archivos). Imprimir usa el navegador y sale solo la hoja, sin los botones: anda en la Mac
-          y en Safari, pero <strong>no</strong> con la web instalada en el inicio del iPhone, que no tiene la
-          función de imprimir.</p>
+        <p class="fine">Descargar PDF lo arma la Pi. Imprimir usa el navegador y sale solo la hoja, sin los
+          botones.${standalone() ? ' Estás en la app instalada en el inicio: si el PDF no se guarda, abrí' +
+          ' necrotracks.local en Safari y bajalo de ahí, o usá Imprimir (el diálogo aparece recién después de' +
+          ' cerrar y volver a abrir la app).' : ''}</p>
       </section></div>`;
   }
 
   v.addEventListener('click', async e => {
+    const link = e.target.closest('#pr-pdf');
+    if (link && standalone()) {
+      // En la app instalada, seguir el enlace abre el PDF adentro y no hay forma de volver: se baja por código.
+      e.preventDefault();
+      try {
+        const r = await fetch(link.href);
+        if (!r.ok) throw new Error('No se pudo armar el PDF');
+        const url = URL.createObjectURL(await r.blob());
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = link.getAttribute('download');
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 10000);
+      } catch (err) { toast(err.message, 'bad'); }
+      return;
+    }
     const b = e.target.closest('button');
     if (!b || !sl) return;
     if (b.dataset.mode) { mode = b.dataset.mode; return render(); }

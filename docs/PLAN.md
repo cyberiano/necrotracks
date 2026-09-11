@@ -263,6 +263,11 @@ Degrada bien: si se corta el WS, muestra "desconectado" y no bloquea nada.
   iPhone no trae la función de imprimir de Safari**; Cristian consiguió habilitarla, pero hay que **salir y volver
   a entrar en la app** para que aparezca el diálogo. Desde la Mac, imprimir la hoja alcanza.
   fpdf2 usa las fuentes del propio PDF (latin-1): nada de rayas largas ni comillas tipográficas.
+  ⚠️ **Trampa de la app instalada** (la pisamos): un enlace al PDF (`target="_blank"` incluido) lo abre **dentro**
+  de la app, a pantalla completa, sin botones y **sin forma de volver**: hay que cerrar la app. Por eso el PDF se
+  sirve como `application/octet-stream` (que el navegador lo baje, no que lo muestre) y, si la web corre instalada
+  (`display-mode: standalone`), el botón **no navega**: baja el archivo por código (fetch → blob → `a.download`).
+  Regla general: **en la app instalada, nada de navegar fuera de la web** — no hay barra para volver.
 - **Renombrar canciones** (`PATCH /api/songs/SLUG`): cambia solo el nombre en `song.json`; **el slug no cambia**,
   que es con lo que la encuentran las set lists, el render y el video. Nombres como "Obsolete Stimulus click L -
   foh R" salen del archivo importado y antes no había forma de arreglarlos. No mientras suena.
