@@ -104,6 +104,65 @@ def test_pantalla_de_reposo(client):
     assert client.delete("/api/idle").status_code == 200 and not d.exists()  # vuelve al logo
 
 
+NMCLI = {
+    ("-t", "-f", "DEVICE,TYPE,STATE", "device", "status"):
+        "wlan0:wifi:connected\nlo:loopback:connected (externally)\np2p-dev-wlan0:wifi-p2p:disconnected\n",
+    ("-t", "-f", "IP4.ADDRESS", "device", "show", "wlan0"): "IP4.ADDRESS[1]:192.168.1.32/24\n",
+    ("-t", "-f", "IN-USE,SSID,SIGNAL,SECURITY", "device", "wifi", "list"):
+        "*:Akasha:79:WPA2\n :Akasha:41:WPA2\n :Sala\\: ensayo:66:WPA2\n ::22:WPA2\n",  # repetida, con ':' y oculta
+    ("-t", "-f", "NAME,TYPE,DEVICE", "connection", "show"):
+        "netplan-wlan0-Akasha:802-11-wireless:wlan0\nnecrotracks-hotspot:802-11-wireless:\nlo:loopback:lo\n",
+}
+
+
+class FakeRun:
+    def __init__(self, out=""):
+        self.stdout, self.stderr, self.returncode = out, "", 0
+
+
+def fake_nmcli(calls):
+    def run(cmd, **kw):
+        calls.append(cmd)
+        assert cmd[0] in ("sudo", "nmcli")
+        return FakeRun(NMCLI.get(tuple(cmd[cmd.index("nmcli") + 1:]), ""))
+    return run
+
+
+def test_wifi(client, monkeypatch):
+    calls = []
+    monkeypatch.setattr(web.subprocess, "run", fake_nmcli(calls))
+    w = client.get("/api/wifi").json()
+    assert (w["available"], w["ssid"], w["ip"]) == (True, "Akasha", "192.168.1.32")
+    assert [(n["ssid"], n["signal"]) for n in w["networks"]] == [("Akasha", 79), ("Sala: ensayo", 66)]  # sin repetir
+    assert w["saved"] == [{"name": "netplan-wlan0-Akasha", "active": True},
+                          {"name": "necrotracks-hotspot", "active": False}]
+    assert w["hotspot"] is False
+
+    calls.clear()
+    assert client.post("/api/wifi", json={"ssid": "Sala", "password": "secreta"}).status_code == 200
+    assert calls == [["sudo", "-n", "nmcli", "device", "wifi", "connect", "Sala", "password", "secreta"]]
+    assert client.post("/api/wifi", json={"ssid": "  "}).status_code == 400
+
+    # El hotspot es la única red que queda en el escenario si no hay conocida: no se borra desde la web
+    assert client.delete("/api/wifi/necrotracks-hotspot").status_code == 409
+    assert client.delete("/api/wifi/netplan-wlan0-Akasha").status_code == 200
+    assert calls[-1] == ["sudo", "-n", "nmcli", "connection", "delete", "netplan-wlan0-Akasha"]
+
+    store.set_playing(True)
+    try:
+        assert client.post("/api/wifi", json={"ssid": "Sala"}).status_code == 409
+    finally:
+        store.set_playing(False)
+
+
+def test_sin_networkmanager(client, monkeypatch):
+    def boom(cmd, **kw):
+        raise FileNotFoundError("nmcli")
+
+    monkeypatch.setattr(web.subprocess, "run", boom)
+    assert client.get("/api/wifi").json() == {"available": False, "networks": [], "saved": []}
+
+
 def test_sistema_y_apagado(client, monkeypatch):
     store.DATA.mkdir(parents=True, exist_ok=True)
     s = client.get("/api/system").json()

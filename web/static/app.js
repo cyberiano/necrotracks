@@ -140,6 +140,15 @@ document.addEventListener('keydown', e => {
   if (e.target.closest('input, select, textarea') || e.metaKey || e.ctrlKey || e.altKey) return;
   current?.onKey?.(e);
 });
+// Instalada en el inicio del iPhone no hay barra ni tirar hacia abajo: sin esto no hay forma de recargar.
+$('#reload').addEventListener('click', () => location.reload());
+// Al volver a la app (por ejemplo, después de subir una canción desde la Mac) se refresca lo que se ve.
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && !current?.dirty?.()) route();
+});
+// Sin zoom: en el escenario un pellizco sin querer deja la pantalla corrida. El meta viewport alcanza
+// con la app instalada; en Safari hace falta cortar los gestos a mano.
+for (const ev of ['gesturestart', 'gesturechange', 'gestureend']) document.addEventListener(ev, e => e.preventDefault());
 
 // ── Piezas comunes ───────────────────────────────────────────────────────────
 
@@ -809,6 +818,27 @@ function viewSettings() {
           Los cambios se ven al instante en la pantalla. Solo con la reproducción parada.</p>
       </div>
 
+      <h2 class="title">Red WiFi</h2>
+      <div class="panel">
+        <div id="wifi-now" class="port">Cargando…</div>
+        <div class="grid2">
+          <label class="field"><span>Red</span>
+            <input id="wifi-ssid" placeholder="Nombre de la red" autocapitalize="off" autocorrect="off" spellcheck="false"></label>
+          <label class="field"><span>Contraseña</span>
+            <input id="wifi-pass" type="password" placeholder="Vacío si es abierta" autocapitalize="off" autocorrect="off" spellcheck="false"></label>
+        </div>
+        <div id="wifi-nets" class="nets"></div>
+        <div class="actions">
+          <button id="wifi-connect" class="btn primary">Conectar</button>
+          <button id="wifi-scan" class="btn ghost sm">${ic('reload')}Buscar redes</button>
+          <span id="wifi-status" class="status"></span>
+        </div>
+        <div id="wifi-saved"></div>
+        <p class="fine">Al conectarse a otra red, la Pi se va de la actual: esta página se corta y hay que buscarla
+          en la red nueva (necrotracks.local). Si la contraseña está mal y queda sin red, al reiniciarla vuelve el
+          hotspot "Necrotracks". Solo con la reproducción parada.</p>
+      </div>
+
       <h2 class="title">Sistema</h2>
       <div class="panel">
         <div id="sys-now" class="port">Cargando…</div>
@@ -905,6 +935,31 @@ function viewSettings() {
     idleFit.set(idle.fit);
   }
 
+  // Red WiFi
+  async function loadWifi(rescan = false) {
+    let w;
+    try { w = await api('GET', '/api/wifi'); } catch (e) { $('#wifi-now').textContent = e.message; return; }
+    if (!$('#wifi-now')) return;
+    if (!w.available) {
+      $('#wifi-now').innerHTML = `<span class="chip warn">${ic('alert')}Sin WiFi</span><span>No hay una placa WiFi manejada por NetworkManager.</span>`;
+      return;
+    }
+    $('#wifi-now').innerHTML = w.ssid
+      ? `<span class="chip ${w.hotspot ? 'live' : 'ok'}">${ic('check')}${w.hotspot ? 'Hotspot' : 'Conectada'}</span>
+         <span>${esc(w.ssid)} <span class="muted">· ${esc(w.ip || 'sin IP')}</span></span>`
+      : `<span class="chip bad">${ic('alert')}Sin red</span><span>La Pi no está conectada a ninguna WiFi.</span>`;
+    $('#wifi-nets').innerHTML = w.networks.map(n =>
+      `<button class="btn sm ${n.in_use ? 'primary' : 'ghost'}" data-ssid="${esc(n.ssid)}">${esc(n.ssid)}
+        <span class="sig">${n.signal}%</span></button>`).join('') || '<span class="muted small">No se vio ninguna red.</span>';
+    const others = w.saved.filter(s => s.name !== 'necrotracks-hotspot');
+    $('#wifi-saved').innerHTML = others.length
+      ? `<div class="saved"><span class="label">Guardadas</span>${others.map(s =>
+        `<span class="chip">${esc(s.name)}${s.active ? ' · en uso' : ''}
+          <button class="btn icon sm danger" data-forget-wifi="${esc(s.name)}" title="Olvidar">${ic('x')}</button></span>`).join('')}</div>`
+      : '';
+    if (rescan) toast('Redes actualizadas');
+  }
+
   // Sistema: temperatura, lugar libre y apagado
   async function loadSystem() {
     let s;
@@ -971,6 +1026,29 @@ function viewSettings() {
       } catch (err) { toast(err.message, 'bad'); }
     } else if (b.id === 'idle-logo') {
       try { await api('DELETE', '/api/idle'); toast('Volvió el logo'); loadHdmi(); } catch (err) { toast(err.message, 'bad'); }
+    } else if (b.dataset.ssid) {
+      $('#wifi-ssid').value = b.dataset.ssid;
+      $('#wifi-pass').focus();
+    } else if (b.id === 'wifi-scan') {
+      loadWifi(true);
+    } else if (b.dataset.forgetWifi) {
+      if (!confirm(`¿Olvidar la red "${b.dataset.forgetWifi}"?`)) return;
+      try { await api('DELETE', '/api/wifi/' + encodeURIComponent(b.dataset.forgetWifi)); loadWifi(); }
+      catch (err) { toast(err.message, 'bad'); }
+    } else if (b.id === 'wifi-connect') {
+      const ssid = $('#wifi-ssid').value.trim();
+      if (!ssid) return toast('Poné el nombre de la red', 'bad');
+      if (!confirm(`¿Conectar la Pi a "${ssid}"? Se va de la red actual y esta página se va a cortar.`)) return;
+      const status = (html, cls = '') => { const s = $('#wifi-status'); if (s) { s.innerHTML = html; s.className = 'status ' + cls; } };
+      status('<span>Conectando… si la Pi cambia de red, esta página se corta.</span>');
+      try {
+        await api('POST', '/api/wifi', {ssid, password: $('#wifi-pass').value || null});
+        $('#wifi-pass').value = '';
+        status(`${ic('check')}<span>Conectada a ${esc(ssid)}.</span>`, 'ok');
+        loadWifi();
+      } catch (err) {
+        status(`${ic('alert')}<span>${esc(err.message)}</span>`, 'bad');
+      }
     } else if (b.id === 'sys-off' || b.id === 'sys-reboot') {
       const off = b.id === 'sys-off';
       if (!confirm(off ? '¿Apagar la Pi? Esperá a que se apaguen las luces antes de desenchufar.'
@@ -991,6 +1069,7 @@ function viewSettings() {
   load();
   loadOutput();
   loadHdmi();
+  loadWifi();
   loadSystem();
   const timer = setInterval(load, 1000);
   const sysTimer = setInterval(loadSystem, 5000);

@@ -235,6 +235,120 @@ async def post_idle_fit(body: FitIn):
     return _ok(await engine_request({"cmd": "set_idle_fit", "fit": _fit(body)}))
 
 
+# ── Red WiFi ───────────────────────────────────────────────────────────────────
+# Todo por NetworkManager (nmcli), que es quien maneja la red en la Pi. Cambiar de red la saca de la
+# actual: la web se corta y hay que buscarla en la red nueva. Si no engancha ninguna conocida, al
+# reiniciar vuelve el hotspot (necrotracks-hotspot.service), que por eso nunca se borra desde acá.
+
+HOTSPOT = "necrotracks-hotspot"
+WIFI_CONNECT_TIMEOUT = 45
+
+
+def _terse(line):
+    r"""Una línea de `nmcli -t`: campos separados por ':', con '\:' cuando el valor trae uno."""
+    out, cur, esc = [], "", False
+    for ch in line:
+        if esc:
+            cur, esc = cur + ch, False
+        elif ch == "\\":
+            esc = True
+        elif ch == ":":
+            out.append(cur)
+            cur = ""
+        else:
+            cur += ch
+    return [*out, cur]
+
+
+def _nmcli(*args, sudo=False, timeout=15):
+    cmd = (["sudo", "-n"] if sudo else []) + ["nmcli", *args]
+    return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, check=True).stdout
+
+
+def _fields(line, n):
+    return (_terse(line) + [""] * n)[:n]
+
+
+def _wifi_device():
+    for line in _nmcli("-t", "-f", "DEVICE,TYPE,STATE", "device", "status").splitlines():
+        dev, kind, state = _fields(line, 3)
+        if kind == "wifi" and not dev.startswith("p2p"):
+            return dev, state
+    return None, None
+
+
+def _wifi_ip(device):
+    for line in _nmcli("-t", "-f", "IP4.ADDRESS", "device", "show", device).splitlines():
+        parts = _terse(line)
+        if len(parts) > 1 and parts[1]:
+            return parts[1].split("/")[0]
+    return None
+
+
+@app.get("/api/wifi")
+def get_wifi():
+    try:
+        device, state = _wifi_device()
+    except (OSError, subprocess.SubprocessError):
+        device = None  # sin NetworkManager (p. ej. la Mac)
+    if not device:
+        return {"available": False, "networks": [], "saved": []}
+    best, ssid = {}, None
+    for line in _nmcli("-t", "-f", "IN-USE,SSID,SIGNAL,SECURITY", "device", "wifi", "list").splitlines():
+        use, name, signal, security = _fields(line, 4)
+        if not name:
+            continue  # redes ocultas: no se listan
+        if use == "*":
+            ssid = name
+        net = {"ssid": name, "signal": int(signal or 0), "security": security or "abierta", "in_use": use == "*"}
+        if net["signal"] >= best.get(name, {}).get("signal", -1):  # la misma red puede venir de varias antenas
+            best[name] = net
+    saved = [{"name": name, "active": dev == device}
+             for name, kind, dev in (_fields(line, 3) for line in
+                                     _nmcli("-t", "-f", "NAME,TYPE,DEVICE", "connection", "show").splitlines())
+             if kind == "802-11-wireless"]
+    return {"available": True, "device": device, "state": state, "ssid": ssid, "ip": _wifi_ip(device),
+            "hotspot": any(s["name"] == HOTSPOT and s["active"] for s in saved),
+            "networks": sorted(best.values(), key=lambda n: -n["signal"]), "saved": saved}
+
+
+class WifiIn(BaseModel):
+    ssid: str
+    password: str | None = None
+
+
+@app.post("/api/wifi")
+async def post_wifi(body: WifiIn):
+    """Conecta la Pi a otra red. La contraseña no se guarda ni se registra acá: va derecho a nmcli."""
+    ssid = body.ssid.strip()
+    if not ssid:
+        raise HTTPException(400, "Poné el nombre de la red")
+    if store.is_playing():
+        raise HTTPException(409, "Está sonando: cambiá de red con la reproducción parada")
+    args = ["device", "wifi", "connect", ssid] + (["password", body.password] if body.password else [])
+    try:
+        await run_in_threadpool(lambda: _nmcli(*args, sudo=True, timeout=WIFI_CONNECT_TIMEOUT))
+    except subprocess.CalledProcessError as e:
+        raise HTTPException(400, (e.stderr or "").strip()[-200:] or f"No se pudo conectar a '{ssid}'") from None
+    except (OSError, subprocess.SubprocessError):
+        raise HTTPException(500, "nmcli no respondió: la Pi puede estar cambiando de red") from None
+    return {"ok": True}
+
+
+@app.delete("/api/wifi/{name}")
+def delete_wifi(name: str):
+    """Olvida una red guardada. El hotspot no: es lo único que queda si en el escenario no hay red conocida."""
+    if name == HOTSPOT:
+        raise HTTPException(409, "El hotspot Necrotracks no se borra: es la red de respaldo")
+    if store.is_playing():
+        raise HTTPException(409, "Está sonando: tocá la red con la reproducción parada")
+    try:
+        _nmcli("connection", "delete", name, sudo=True)
+    except (OSError, subprocess.SubprocessError):
+        raise HTTPException(400, f"No se pudo borrar '{name}'") from None
+    return {"ok": True}
+
+
 # ── Sistema (temperatura y apagado) ────────────────────────────────────────────
 
 POWER = {"off": "poweroff", "reboot": "reboot"}

@@ -20,7 +20,7 @@
 html { -webkit-text-size-adjust: 100%; }
 html, body { margin: 0; color: var(--text); font: 16px/1.45 var(--ui); }
 body {
-  min-height: 100vh; -webkit-tap-highlight-color: transparent;
+  min-height: 100vh; -webkit-tap-highlight-color: transparent; touch-action: manipulation;  /* sin zoom por doble toque */
   background: radial-gradient(1100px 520px at 50% -160px, #17171c 0%, rgba(9, 9, 11, 0) 70%) no-repeat, var(--bg);
 }
 a { color: var(--text); }
@@ -268,6 +268,14 @@ input[type=checkbox]:disabled { opacity: .35; cursor: default; }
 .fit .check { display: flex; align-items: center; gap: 9px; margin-top: -6px; font-size: 13.5px;
   color: var(--muted); cursor: pointer; user-select: none; -webkit-user-select: none; }
 
+/* ── Red WiFi ──────────────────────────────────────────────────────────── */
+.nets { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+.nets .btn { --cut: 6px; }
+.nets .sig { font: 12px var(--mono); color: var(--muted); }
+.nets .btn.primary .sig { color: #3a3a42; }
+.saved { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 18px; }
+.saved .chip { gap: 8px; padding-right: 4px; text-transform: none; letter-spacing: .04em; }
+
 /* ── Controles ─────────────────────────────────────────────────────────── */
 .controls td.acts { width: 1%; }
 .controls td div + div { margin-top: 4px; }
@@ -291,7 +299,7 @@ input[type=checkbox]:disabled { opacity: .35; cursor: default; }
   #bar .wrap { height: 54px; gap: 12px; }
   .brand .emblem { width: 18px; height: 30px; }
   .brand .wordmark { width: 132px; height: 16px; }
-  .conn { margin-left: auto; }
+  #reload { margin-left: auto; }
   #tabs { position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; gap: 0; margin: 0;
     padding: 6px 4px calc(4px + var(--bottom)); background: rgba(9, 9, 11, .97); border-top: 1px solid var(--line); }
   #tabs a { flex: 1; flex-direction: column; justify-content: center; gap: 6px; padding: 8px 0 6px; font-size: 12px; }

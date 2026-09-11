@@ -243,6 +243,11 @@ Degrada bien: si se corta el WS, muestra "desconectado" y no bloquea nada.
   sin tildar** —lo mismo que ya había pasado con el deslizante—. Va uno propio: cuadrado rojo con tilde blanca.
   Y `index.html` pide `style.css` y `app.js` con **`?v=N`**: si no, el navegador (sobre todo el iPhone con la
   app instalada) se queda con la versión vieja. **Subir el número al tocar cualquiera de los dos.**
+- **Sin zoom y con botón de recargar** (2026-09-11, pedido de Cristian): el zoom se bloquea (`maximum-scale=1`,
+  `user-scalable=no`, `touch-action: manipulation` y los gestos cortados a mano para Safari), porque un pellizco
+  sin querer en el escenario deja la pantalla corrida. Y **instalada en el inicio del iPhone no hay forma de
+  recargar** (no hay barra ni tirar hacia abajo): va un botón en la barra, más un refresco automático al volver
+  a la app (por ejemplo, después de subir una canción desde la Mac).
 - Falta: elegir el perfil de hardware (hoy solo se ve cuál está activo en `/api/info`).
 
 ### Fase 4 — Controles físicos
@@ -271,6 +276,13 @@ mDNS `necrotracks.local` como conveniencia, no como única vía).
 tienen que poder correr un show completo solos: elegir setlist, ver actual/próxima, play/stop.
 
 Además: chequeo pre-show, pánico con all-notes-off, autostart, watchdog de systemd, backup de SD.
+
+**Configurador de WiFi (2026-09-11, pedido de Cristian)**: Ajustes → Red WiFi, por `nmcli` (`sudo -n`, que el
+usuario tiene sin password). Muestra la red conectada y la IP, lista las redes que ve (sin repetir la misma
+antena, las ocultas no se listan), conecta con contraseña y olvida las guardadas. **El hotspot
+`necrotracks-hotspot` no se puede borrar desde la web**: es lo único que queda si en el escenario no hay red
+conocida. Nada de esto mientras suena. Ojo al probar: cambiar de red **corta la web y el SSH**; si la
+contraseña está mal, la Pi queda sin red hasta reiniciarla (ahí vuelve el hotspot).
 
 ### Visuales por HDMI (pedido 2026-09-11)
 Canciones como MP4 (audio L = click, R = pista) con el video por HDMI a un proyector. **Formato: H.264
