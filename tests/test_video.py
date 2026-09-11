@@ -147,7 +147,8 @@ def test_encaje_del_video():
     assert fit_opts({"mode": "fill", "scale": 90, "x": 5, "y": -2.5}) == \
         "keepaspect=yes,panscan=1,video-zoom=-0.152,video-pan-x=0.05,video-pan-y=-0.025"
     assert fit_opts({"mode": "stretch"}).startswith("keepaspect=no,panscan=0,")
-    for bad in ({"mode": "zoom"}, {"scale": 200}, {"x": 40}):
+    assert check_fit({"x": -50, "y": 50})["x"] == -50  # se puede correr hasta la mitad
+    for bad in ({"mode": "zoom"}, {"scale": 200}, {"x": 60}):
         with pytest.raises(ValueError):
             check_fit(bad)
 

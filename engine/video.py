@@ -103,8 +103,8 @@ def check_fit(fit, default=FIT_DEFAULT):
     scale, x, y = float(f["scale"]), float(f["x"]), float(f["y"])
     if not 50 <= scale <= 120:
         raise ValueError("La escala va de 50 a 120 %")
-    if not (-25 <= x <= 25 and -25 <= y <= 25):
-        raise ValueError("La posición va de −25 a 25 %")
+    if not (-50 <= x <= 50 and -50 <= y <= 50):
+        raise ValueError("La posición va de −50 a 50 %")
     return {"mode": f["mode"], "scale": round(scale), "x": round(x, 1), "y": round(y, 1)}
 
 

@@ -680,9 +680,9 @@ function fitHtml(p, label, {pattern = false} = {}) {
       <input type="range" id="${p}-scale" data-fit-group="${p}" data-k="scale" min="50" max="120" step="1"></label>
     <div class="grid2">
       <label class="field"><span>Horizontal <b id="${p}-x-v"></b></span>
-        <input type="range" id="${p}-x" data-fit-group="${p}" data-k="x" min="-20" max="20" step="0.5"></label>
+        <input type="range" id="${p}-x" data-fit-group="${p}" data-k="x" min="-50" max="50" step="0.5"></label>
       <label class="field"><span>Vertical <b id="${p}-y-v"></b></span>
-        <input type="range" id="${p}-y" data-fit-group="${p}" data-k="y" min="-20" max="20" step="0.5"></label>
+        <input type="range" id="${p}-y" data-fit-group="${p}" data-k="y" min="-50" max="50" step="0.5"></label>
     </div>
     <div class="actions">${pattern ? `<button id="${p}-pattern" class="btn"></button>` : ''}
       <button id="${p}-reset" class="btn ghost">Restablecer</button></div>
