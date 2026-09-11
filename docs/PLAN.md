@@ -304,6 +304,23 @@ real de la banda ("There is a Place", H.264 720p30, 7,4 Mbps, AAC 44,1 kHz, 4:30
   Ajustes → Pantalla HDMI y cambiarla reinicia solo mpv (no el engine ni el iRig). **No usar
   `--drm-draw-surface-size`**: con la capa de mpv más chica que la pantalla, el video queda tapado.
   Pendiente: que Cristian confirme el video en 1920x1080 con la proporción bien.
+- **Encaje ajustable** (Ajustes → Pantalla HDMI): Ajustar / Llenar / Estirar, escala 50–120 % y posición
+  ±50 % (con ±20 % no alcanzaba para ubicar libremente), en vivo sobre mpv y guardado en `config.json`
+  (`video_fit`). Patrón de ajuste 16:9 (borde blanco, zona segura del 5 % en rojo) para compensar el
+  overscan: Cristian lo calibró en su monitor (vertical −2,5 %).
+- **Pantalla de reposo** (Ajustes → Pantalla en reposo): lo que se ve cuando no suena un video (parado o una
+  canción sin video). Por defecto el logo de Necrópolis (`video-logo.png`, al 54 %); se reemplaza subiendo una
+  imagen (PNG/JPG/WebP, se aplana sobre negro) o un video (MP4, en loop y sin audio) a `data/reposo/`, con su
+  propio encaje (`idle_fit`). Probado con imagen; falta probar un video de reposo.
+- **Modo HDMI que se corrige solo**: después de un reinicio mpv tomó la pantalla antes de que el adaptador diera
+  todos sus modos y quedó en 1024x768 con 1920x1080 elegido. Parado, cada 5 s compara el modo que corresponde con
+  el de mpv y, si no coinciden, reinicia solo mpv (también sirve si enchufan un proyector con la Pi prendida).
+- **Arranque**: Plymouth con el logo de Necrotracks (`bin/remote/splash/`), sin arcoíris (`disable_splash=1`);
+  la tty1 queda negra (kernel en `console=tty3`, `quiet splash`, sin cursor ni login; login en Ctrl+Alt+F2).
+  Primer reinicio: después del logo quedó todo negro porque mpv tomó la pantalla antes de que Plymouth terminara;
+  ahora mpv espera a que se cierre `plymouthd` (probado: Plymouth terminó 18:01:08, mpv tomó la pantalla 18:01:18).
+- Pendiente: el video "lavado" (sospecha: rango de color limitado/completo en algún punto de la cadena Pi →
+  adaptador HDMI-VGA → monitor; falta comparar el negro del logo con el del video).
 - Ojo con reiniciar el engine: al abrir el iRig con la CMA casi agotada, el USB lo perdió
   (`usb_set_interface failed (-19)`) y reapareció solo. Con `cma-384` no se repitió.
 **Falta la prueba que decide**: 30 min con el engine sonando por el iRig y el video, con Cristian mirando
