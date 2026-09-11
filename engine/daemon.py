@@ -15,6 +15,8 @@ con JSON por línea, que usan la web, la pedalera, el OLED y el CLI:
     → {"cmd": "unlearn", "action": "next"}
     → {"cmd": "output"}          ← salida activa, perfil elegido, respaldo y perfiles disponibles
     → {"cmd": "set_output", "profile": "...", "fallback": "pi-jack"|null}   parado; reinicia el engine
+    → {"cmd": "hdmi"}            ← modos de la pantalla, el elegido ("auto" o "WxH") y el que se usa
+    → {"cmd": "set_hdmi", "mode": "auto"|"WxH"}   parado; reinicia solo el video (el audio no se toca)
 
 Cada pedido responde {"ok": true} o {"ok": false, "error": "..."}. El engine no depende de
 ningún cliente: si la web se cae, el show sigue, y los footswitches también.
@@ -28,10 +30,11 @@ import sys
 
 from . import controls, library, profiles, setlists, store
 from .show import Show
+from .video import hdmi_modes, pick_mode
 
 log = logging.getLogger("necrotracks.engine")
 
-DEFAULT_CONFIG = {"profile": profiles.DEFAULT, "fallback": profiles.FALLBACK, "setlist": None,
+DEFAULT_CONFIG = {"profile": profiles.DEFAULT, "fallback": profiles.FALLBACK, "setlist": None, "hdmi_mode": "auto",
                   "midi": {"port": controls.DEFAULT_PORT, "map": controls.DEFAULT_MAP}}
 EMPTY_STATE = {"setlist": None, "slug": None, "state": "stopped", "index": 0, "count": 0, "song": None,
                "song_slug": None, "block": None,
@@ -95,6 +98,7 @@ class Engine:
         self.controls = controls.Controls(self.config["midi"]["map"], self._control_action)
         self.midi_port = None  # lo fija main(); en los tests no se abre MIDI
         self.restart = None  # lo fija main(): salir para que systemd reinicie con otra salida
+        self.video = None  # lo fija main() si hay mpv
 
     def state(self):
         return {**(self.show.snapshot() if self.show else EMPTY_STATE), "output": self.output}
@@ -148,6 +152,19 @@ class Engine:
                     "profiles": {k: p["label"] for k, p in profiles.PROFILES.items()}}
         if cmd == "set_output":
             return self.set_output(req.get("profile") or self.config["profile"], req.get("fallback") or None)
+        if cmd == "hdmi":
+            return {"ok": True, "modes": hdmi_modes(), "mode": self.config.get("hdmi_mode", "auto"),
+                    "current": self.video.mpv.current_mode if self.video else None, "video": self.video is not None}
+        if cmd == "set_hdmi":
+            mode = req.get("mode") or "auto"
+            if mode != "auto" and mode not in hdmi_modes():
+                raise EngineError(f"La pantalla no ofrece {mode}")
+            self._require_stopped("cambiar la resolución de la pantalla")
+            self.config["hdmi_mode"] = mode
+            store.write_json(config_path(), self.config)
+            if self.video:
+                self.video.mpv.restart()
+            return {"ok": True}
         raise EngineError(f"Comando desconocido: {cmd!r}")
 
     def set_output(self, profile, fallback):
@@ -316,8 +333,10 @@ def main():
 
         # El logo va en los datos (no en el repo): sin él, la pantalla queda en negro entre videos.
         delay = player.stream.latency + config.get("video_offset", 0.0)
-        Video(engine.state, library.video_path, store.DATA / "video-logo.png", delay=delay,
-              mpv=Mpv(store.RUN / "mpv.sock"), cache_dir=store.RUN).start()
+        mode = lambda: pick_mode(hdmi_modes(), engine.config.get("hdmi_mode", "auto"))  # noqa: E731
+        engine.video = Video(engine.state, library.video_path, store.DATA / "video-logo.png", delay=delay,
+                             mpv=Mpv(store.RUN / "mpv.sock", mode=mode), cache_dir=store.RUN)
+        engine.video.start()
     if config["setlist"]:
         try:
             engine.load(config["setlist"])

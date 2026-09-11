@@ -679,6 +679,15 @@ function viewSettings() {
         <div class="actions"><button id="out-save" class="btn primary">Guardar</button>
           <span class="muted small">Reinicia el engine: tarda unos segundos y solo se puede con la reproducción parada.</span></div>
       </div>
+      <h2 class="title">Pantalla HDMI</h2>
+      <div class="panel">
+        <div id="hd-now" class="port">Cargando…</div>
+        <div class="grid2">
+          <label class="field"><span>Resolución</span><select id="hd-mode"></select></label>
+        </div>
+        <div class="actions"><button id="hd-save" class="btn primary">Aplicar</button>
+          <span class="muted small">Reinicia solo el video, no el audio. Automática: la que pide la pantalla, salvo que sea 4:3 y haya una 16:9.</span></div>
+      </div>
       <h2 class="title">Controles MIDI</h2>
       <div id="ct-port" class="port">Cargando…</div>
       <div class="table-wrap"><table class="controls">
@@ -703,6 +712,21 @@ function viewSettings() {
     $('#out-profile').innerHTML = opts(out.profile);
     $('#out-fallback').innerHTML = `<option value="" ${out.fallback ? '' : 'selected'}>No sonar: esperar a la interfaz</option>${opts(out.fallback)}`;
     renderOutput();
+  }
+
+  async function loadHdmi() {
+    let h;
+    try { h = await api('GET', '/api/hdmi'); } catch (e) { $('#hd-now').textContent = e.message; return; }
+    if (!h.video) {
+      $('#hd-now').innerHTML = `<span class="chip warn">${ic('alert')}Sin video</span><span>mpv no está instalado en la Pi.</span>`;
+    } else if (!h.modes.length) {
+      $('#hd-now').innerHTML = `<span class="chip bad">${ic('alert')}Sin pantalla</span><span>No hay nada conectado por HDMI.</span>`;
+    } else {
+      $('#hd-now').innerHTML = `<span class="chip ok">${ic('check')}Conectada</span><span>Sale en <strong>${esc(h.current || h.modes[0])}</strong>
+        <span class="muted">· la pantalla pide ${esc(h.modes[0])}</span></span>`;
+    }
+    $('#hd-mode').innerHTML = `<option value="auto" ${h.mode === 'auto' ? 'selected' : ''}>Automática</option>` +
+      h.modes.map(m => `<option value="${esc(m)}" ${m === h.mode ? 'selected' : ''}>${esc(m)}</option>`).join('');
   }
 
   function renderOutput() {
@@ -754,6 +778,12 @@ function viewSettings() {
     } else if (b.dataset.forget) {
       try { await api('POST', '/api/unlearn', {action: b.dataset.forget}); } catch (err) { toast(err.message, 'bad'); }
       load();
+    } else if (b.id === 'hd-save') {
+      try {
+        await api('POST', '/api/hdmi', {mode: $('#hd-mode').value});
+        toast('Aplicado: reiniciando el video…');
+        setTimeout(loadHdmi, 4000);
+      } catch (err) { toast(err.message, 'bad'); }
     } else if (b.id === 'out-save') {
       try {
         const r = await api('POST', '/api/output', {profile: $('#out-profile').value, fallback: $('#out-fallback').value || null});
@@ -765,6 +795,7 @@ function viewSettings() {
 
   load();
   loadOutput();
+  loadHdmi();
   const timer = setInterval(load, 1000);
   return {onLive, leave: () => clearInterval(timer)};
 }

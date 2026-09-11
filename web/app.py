@@ -190,6 +190,20 @@ async def post_output(body: OutputIn):
     return _ok(await engine_request({"cmd": "set_output", "profile": body.profile, "fallback": body.fallback}))
 
 
+class HdmiIn(BaseModel):
+    mode: str = "auto"
+
+
+@app.get("/api/hdmi")
+async def get_hdmi():
+    return _ok(await engine_request({"cmd": "hdmi"}))
+
+
+@app.post("/api/hdmi")
+async def post_hdmi(body: HdmiIn):
+    return _ok(await engine_request({"cmd": "set_hdmi", "mode": body.mode}))
+
+
 @app.get("/api/info")
 def get_info():
     return {

@@ -13,6 +13,7 @@ un poco la velocidad hasta alcanzarla.
 import json
 import logging
 import os
+import re
 import socket
 import subprocess
 import threading
@@ -44,6 +45,42 @@ STEP = 0.25
 RETRY = 10  # segundos entre intentos de levantar mpv (p. ej. sin pantalla conectada)
 
 
+def hdmi_modes(base="/sys/class/drm"):
+    """Modos que ofrece la pantalla conectada por HDMI (sin repetir); el primero es el que prefiere."""
+    for card in sorted(Path(base).glob("card*-HDMI-A-*")):
+        try:
+            if (card / "status").read_text().strip() != "connected":
+                continue
+            return list(dict.fromkeys((card / "modes").read_text().split()))
+        except OSError:
+            continue
+    return []
+
+
+def _size(mode):
+    m = re.fullmatch(r"(\d+)x(\d+)(i?)", mode)
+    return (int(m.group(1)), int(m.group(2)), bool(m.group(3))) if m else None
+
+
+def pick_mode(modes, wanted="auto"):
+    """El modo HDMI a usar. Automático: el que prefiere la pantalla, salvo que sea 4:3 (o 5:4) y haya uno
+    16:9. Los visuales son 16:9 y, por ejemplo, un adaptador HDMI-VGA puede pedir 1024x768 aunque el
+    monitor sea ancho (y entonces lo estira). Nunca más de 1080p ni entrelazado: la Pi 3 no da para más."""
+    usable = [m for m in modes if (s := _size(m)) and s[0] <= 1920 and s[1] <= 1080 and not s[2]]
+    if not usable:
+        return None  # que decida mpv
+    if wanted and wanted != "auto" and wanted in usable:
+        return wanted
+    area = lambda m: _size(m)[0] * _size(m)[1]  # noqa: E731
+    preferred = modes[0] if modes[0] in usable else None
+    if preferred and _size(preferred)[0] / _size(preferred)[1] >= 1.5:
+        return preferred
+    wide = [m for m in usable if abs(_size(m)[0] / _size(m)[1] - 16 / 9) < 0.03]
+    if wide:
+        return max(wide, key=area)
+    return preferred or max(usable, key=area)
+
+
 def flatten(logo, out):
     """El logo aplanado sobre negro: así no depende de cómo mpv pinta lo transparente (y una captura
     del HDMI lo puede confirmar). Si ffmpeg falla, queda el original."""
@@ -62,15 +99,30 @@ def flatten(logo, out):
 class Mpv:
     """El proceso mpv y su socket JSON."""
 
-    def __init__(self, sock):
+    def __init__(self, sock, mode=None):
         self.sock = Path(sock)
         self.proc = None
+        self.mode = mode  # () → "WxH" o None (el que prefiere la pantalla); se consulta en cada arranque
+        self.current_mode = None
 
     def start(self):
         self.sock.parent.mkdir(parents=True, exist_ok=True)
-        self.proc = subprocess.Popen(["mpv", *MPV_ARGS, f"--input-ipc-server={self.sock}"],
+        mode = self.mode() if self.mode else None
+        extra = []
+        if mode:
+            extra.append(f"--drm-mode={mode}")
+            w, h, _ = _size(mode)
+            if w * h > 1280 * 720:  # el logo se dibuja en 720p y lo escala la Pi; el video no pasa por acá
+                extra.append("--drm-draw-surface-size=1280x720")
+        self.current_mode = mode
+        self.proc = subprocess.Popen(["mpv", *MPV_ARGS, *extra, f"--input-ipc-server={self.sock}"],
                                      stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
                                      text=True, preexec_fn=lambda: os.nice(10))
+
+    def restart(self):
+        """Cierra mpv: el hilo de video lo vuelve a levantar (con el modo que corresponda ahora)."""
+        if self.alive():
+            self.proc.terminate()
 
     def alive(self):
         return self.proc is not None and self.proc.poll() is None
@@ -123,7 +175,7 @@ class Video:
                         warned = True
                     time.sleep(RETRY)
                     continue
-                log.info("video: mpv listo en el HDMI")
+                log.info("video: mpv listo en el HDMI (%s)", getattr(self.mpv, "current_mode", None) or "modo preferido")
                 warned, self.loaded, self.paused = False, False, None
             try:
                 self.step(self.get_state())

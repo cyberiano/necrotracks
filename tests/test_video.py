@@ -113,6 +113,53 @@ def test_logo_aplanado_sobre_negro(tmp_path):
     assert out.name == "plano.png" and list(corner) == [0, 0, 0, 255]  # negro opaco, no transparente
 
 
+def test_modo_hdmi_automatico():
+    from engine.video import pick_mode
+
+    adaptador = ["1024x768", "1920x1080", "1360x768", "1280x720", "800x600"]  # el TS35505 de Cristian
+    assert pick_mode(adaptador) == "1920x1080"  # pide 4:3 pero hay 16:9: los visuales son 16:9
+    assert pick_mode(adaptador, "1360x768") == "1360x768"  # elegido a mano
+    assert pick_mode(adaptador, "999x9") == "1920x1080"  # uno que no ofrece: automático
+    assert pick_mode(["1280x720", "1920x1080"]) == "1280x720"  # pantalla ancha: la que pide
+    assert pick_mode(["1024x768", "800x600"]) == "1024x768"  # sin 16:9: la que pide
+    assert pick_mode(["3840x2160", "1920x1080i", "1920x1080", "1024x768"]) == "1920x1080"  # tope 1080p, sin entrelazado
+    assert pick_mode([]) is None
+
+
+def test_modos_de_la_pantalla(tmp_path):
+    from engine.video import hdmi_modes
+
+    card = tmp_path / "card1-HDMI-A-1"
+    card.mkdir()
+    (card / "status").write_text("connected\n")
+    (card / "modes").write_text("1024x768\n1920x1080\n1920x1080\n1360x768\n")
+    assert hdmi_modes(tmp_path) == ["1024x768", "1920x1080", "1360x768"]
+    (card / "status").write_text("disconnected\n")
+    assert hdmi_modes(tmp_path) == []
+
+
+def test_resolucion_por_el_engine(monkeypatch):
+    from engine import daemon, store
+    from test_show import FakePlayer
+
+    monkeypatch.setattr(daemon, "hdmi_modes", lambda: ["1024x768", "1920x1080", "1360x768"])
+    restarts = []
+
+    class FakeVideo:
+        class mpv:
+            current_mode = "1920x1080"
+            restart = staticmethod(lambda: restarts.append(True))
+
+    engine = daemon.Engine(FakePlayer(), dict(daemon.DEFAULT_CONFIG))
+    engine.video = FakeVideo
+    info = engine.handle({"cmd": "hdmi"})
+    assert (info["modes"][0], info["mode"], info["current"], info["video"]) == ("1024x768", "auto", "1920x1080", True)
+    assert engine.handle({"cmd": "set_hdmi", "mode": "1360x768"}) == {"ok": True}
+    assert restarts == [True] and store.read_json(daemon.config_path())["hdmi_mode"] == "1360x768"
+    with pytest.raises(daemon.EngineError, match="no ofrece"):
+        engine.handle({"cmd": "set_hdmi", "mode": "800x480"})
+
+
 def make_mp4(path, seconds=1):
     subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=size=320x180:rate=30", "-f", "lavfi",
                     "-i", "aevalsrc=0.5*sin(2*PI*1000*t)|0.1*sin(2*PI*220*t):s=48000:c=stereo", "-t", str(seconds),
