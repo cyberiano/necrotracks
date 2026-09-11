@@ -254,6 +254,12 @@ Reglas que salen de acá:
    **cualquier carga fuerte puede trabar al iRig, incluso sin cortes de audio.**
    (Duda menor: el parlante se conectó durante la prueba.)
    ⚠️ Trabado saca basura cerca de full scale: en un PA es peligroso. Hay que resolverlo, no evitarlo.
-8. **Próximo**: `dwc_otg.speed=1` en cmdline (todo el USB en full speed, sin transaction
-   translator; Ethernet queda a 12 Mbit/s, irrelevante en el show). Si no alcanza: 16-bit.
+8. **Puerto USB**: el iRig pasado de `1-1.1.3` (hub compartido con Ethernet) a `1-1.2`
+   (directo en el primer hub, el par de puertos lejos del Ethernet):
+   - Carga de CPU 3,5 min (47–58 °C): **aguanta**. 0 underruns, 2 luces verdes, tono suave.
+   - Escritura fuerte a la SD: **se traba igual** (ruido y después apagado; 13 underruns).
+   → **Usar siempre el par de puertos lejos del Ethernet.** La SD sigue siendo el problema.
+9. **Próximo**: `dtparam=sd_force_pio=on` en config.txt. La SD (`sdhost-bcm2835`) deja de usar
+   DMA y no compite con el USB. Costo: más CPU en I/O de la SD (irrelevante a 576 KB/s).
+   Si no alcanza: `dwc_otg.speed=1`, después 16-bit.
    Si nada alcanza: **Raspberry Pi 4** (controlador USB xHCI, sin los problemas de `dwc_otg`).
