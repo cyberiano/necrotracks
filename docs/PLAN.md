@@ -240,6 +240,14 @@ tienen que poder correr un show completo solos: elegir setlist, ver actual/próx
 
 Además: chequeo pre-show, pánico con all-notes-off, autostart, watchdog de systemd, backup de SD.
 
+### Visuales por HDMI (pedido 2026-09-11)
+Canciones como MP4 (audio L = click, R = pista) con el video por HDMI a un proyector. **Formato: H.264
+720p30, ~5 Mbps** (1080p30 anda pero queda al límite del decodificador de la 3B+ y de la CMA, que tiene
+43 MB libres de 256). El import extrae el audio con ffmpeg (mismo render de siempre) y guarda el video sin
+recodificar. En el show, mpv sin audio por DRM, sincronizado a la posición del engine; si se cae, el
+audio sigue. **Sin video sonando: el logo blanco de Necrópolis sobre negro** (`docs/assets/logo/logo-white.png`).
+Riesgo: la carga extra puede trabar al iRig → primero un prototipo de 30 min con vúmetro; si traba, Pi 4.
+
 ### Fase 6 — Automatización MIDI
 Reproducción de `.mid` sincronizada al playhead. Se exporta del DAW en el mismo timeline.
 
