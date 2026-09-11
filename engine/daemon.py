@@ -16,6 +16,7 @@ import asyncio
 import json
 import logging
 import os
+import sys
 
 from . import library, profiles, setlists, store
 from .show import Show
@@ -172,7 +173,11 @@ def main():
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     config = load_config()
     profile = profiles.get(config["profile"])
-    player = Player(profile["device"], profile["matrix"])  # sin el device, sale y systemd reintenta
+    try:
+        player = Player(profile["device"], profile["matrix"])
+    except RuntimeError as e:  # sin el device, sale y systemd reintenta: una línea, sin traceback
+        log.error("%s", e)
+        sys.exit(1)
     player.on_device_lost = lambda: os._exit(3)  # systemd lo reinicia; al volver, recupera la set list y el cursor
     log.info("audio abierto: perfil %s", config["profile"])
     engine = Engine(player, config)

@@ -5,38 +5,34 @@ Complementa a `Reproductor multipista para vivo Necrotracks.md` (el *qué*); est
 
 ---
 
-## Estado actual y próximos pasos (al cierre del 2026-09-11, 00:40)
+## Estado actual y próximos pasos (2026-09-11, 09:45)
 
 **Hardware: la Pi 3B+ + iRig Stomp I/O es viable con `dwc_otg.speed=1`** (34 min limpios). Sin ese
 ajuste el iRig se silencia solo a los ~25 min. El iRig está sano: aguantó 34 min en la Mac. Detalle
 en "Diagnóstico del clipping" más abajo.
 
 **En la Pi hoy** (`necrotracks@192.168.1.32` por WiFi; el Ethernet está desenchufado):
-- Código viejo, `c6b2563`: solo el Player y el CLI de prueba (`python -m engine.cli --profile … ARCHIVO…`).
-- `cmdline.txt` con `dwc_otg.speed=1` (copia en `cmdline.txt.bak-20260910-235538`). `config.txt`
-  como después del bootstrap (sin ajustes de SD).
-- iRig en `1-1.3` (par de puertos lejos del Ethernet), con fuente externa.
-- `/var/lib/necrotracks/library/sands-of-time/`: armada a mano, sin `song.json` → **reimportar**.
-- `/var/lib/necrotracks/test/`: ~2 GB de archivos y logs de prueba. Se pueden borrar.
-- Nada corriendo.
+- `main` desplegado, `necrotracks-engine.service` activo y dueño del iRig (`1-1.3`, fuente externa).
+- `cmdline.txt` con `dwc_otg.speed=1`. logind con `RemoveIPC=no` (ver abajo).
+- Biblioteca: "Sands of time" reimportada. Set list `prueba` (2 veces la canción, espera de 5 s).
+- `/var/lib/necrotracks/test/`: ~1,5 GB de archivos y logs de prueba. Se pueden borrar.
 
-**En `main`, sin desplegar**: Fase 2 (import, set lists, show), el engine como servicio (socket,
-systemd, prioridad RT), el vigía de device perdido, el cursor recuperable y `dwc_otg.speed=1` en el
-bootstrap. 33 tests pasando en la Mac.
+**Probado en la Pi (2026-09-11):**
+- Deploy, import (70 s para 4:11, con el tope de 3 MB/s) y set list por `ctl`: `load`, `play`, `goto`,
+  paso solo a la siguiente con la espera. Suena bien.
+- **Importar con el stream abierto (parado) no trabó al iRig.**
+- **Desenchufar/reenchufar el iRig sonando**: el vigía lo detecta a los 2 s, el engine sale, systemd lo
+  reintenta y al volver el iRig arranca en 1 s, con la set list y el cursor, parado. Suena bien después.
+- **Bug encontrado**: `RemoveIPC=yes` (default de logind) borraba `/dev/shm/necrotracks` al cerrar la
+  última sesión SSH: socket, cursor y **la bandera que bloquea el import mientras suena**. El bootstrap
+  ahora deja `RemoveIPC=no`.
 
 **Próximos pasos, en orden:**
-1. **Desplegar** `main` en la Pi: `NECROTRACKS_HOST=necrotracks@192.168.1.32 bin/deploy.sh`
-   (instala `soxr` y activa `necrotracks-engine.service`, que arranca solo y se queda con el iRig).
-2. **Reimportar "Sands of time"** con el comando nuevo (la fuente está en
-   `library/sands-of-time/stems/click-pista.wav`: copiarla a `/tmp` antes de importar), crear una set
-   list de prueba y manejarla con `python -m engine.cli ctl load|play|stop|next|state|watch`.
-3. **Probar desenchufar y reenchufar el iRig** con el servicio corriendo: el engine tiene que salir,
-   systemd lo reinicia al volver el iRig, y la set list tiene que quedar cargada con el cursor.
-4. **Otro soak largo** (60+ min) con `dwc_otg.speed=1`, y después usarla en un ensayo.
-5. **Fase 3: web** (config + Show Mode) sobre el socket del engine.
-6. **Fase 4: controles**: MIDI Learn con antirrebote (mapa del iRig más abajo), LEDs de los
+1. **Soak largo** (60+ min) con `dwc_otg.speed=1` y el engine en servicio, y después usarla en un ensayo.
+2. **Fase 3: web** (config + Show Mode) sobre el socket del engine.
+3. **Fase 4: controles**: MIDI Learn con antirrebote (mapa del iRig más abajo), LEDs de los
    footswitches como indicador de estado, OLED SH1106 + encoder, botones GPIO.
-7. Fase 5 (hotspot, chequeo pre-show en la UI, pánico, apagado seguro) y Fase 6 (MIDI de automatización).
+4. Fase 5 (hotspot, chequeo pre-show en la UI, pánico, apagado seguro) y Fase 6 (MIDI de automatización).
 
 **Pendientes y deudas:**
 - MIDI OUT hacia el DIN del iRig: sin probar (faltan cables).
@@ -45,8 +41,7 @@ bootstrap. 33 tests pasando en la Mac.
 - Probar la StudioLive 16R como perfil multipista.
 - `necrotracks.local` todavía resuelve también la IP vieja del Ethernet: los scripts usan
   `NECROTRACKS_HOST` con la IP del WiFi hasta que se acomode.
-- La importación escribe con tope de 3 MB/s: validar en la Pi que importar no traba al iRig con el
-  stream abierto.
+- El import con el stream abierto se probó parado, un solo archivo. Sigue bloqueado mientras suena.
 
 ---
 

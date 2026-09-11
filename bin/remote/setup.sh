@@ -75,6 +75,14 @@ RuntimeMaxUse=32M
 CONF
 systemctl restart systemd-journald
 
+log "Que logind no borre /dev/shm al cerrar la última sesión SSH (ahí viven el socket y la bandera 'sonando')"
+install -d /etc/systemd/logind.conf.d
+cat > /etc/systemd/logind.conf.d/necrotracks.conf << 'CONF'
+[Login]
+RemoveIPC=no
+CONF
+systemctl restart systemd-logind
+
 log "Código en $APP, datos en $DATA"
 install -d -o "$NT_USER" -g "$NT_USER" "$APP" "$DATA" "$DATA/library" "$DATA/setlists" "$DATA/profiles"
 if [ -d "$APP/.git" ]; then
