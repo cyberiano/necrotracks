@@ -53,9 +53,9 @@ if grep -q "Raspberry Pi 3" /proc/device-tree/model 2>/dev/null; then
   cmdline_param "dwc_otg.speed=1"
 fi
 
-log "Sin audio onboard, sin audio HDMI, sin Bluetooth"
+log "Jack de la Pi como salida de respaldo; sin audio HDMI, sin Bluetooth"
 cfg_replace() { if grep -qE "$1" "$CFG"; then sed -i -E "s|$1|$2|" "$CFG"; REBOOT=1; fi; }
-cfg_replace '^dtparam=audio=on$' 'dtparam=audio=off'
+cfg_replace '^dtparam=audio=off$' 'dtparam=audio=on'
 cfg_replace '^dtoverlay=vc4-kms-v3d$' 'dtoverlay=vc4-kms-v3d,noaudio'
 grep -qxF 'dtoverlay=disable-bt' "$CFG" || { echo 'dtoverlay=disable-bt' >> "$CFG"; REBOOT=1; }
 systemctl disable --now hciuart bluetooth 2>/dev/null || true
@@ -100,13 +100,18 @@ sudo -u "$NT_USER" "$APP/.venv/bin/pip" install -q -r "$APP/requirements.txt"
 log "Hotspot WiFi (se levanta solo si al arrancar no hay una WiFi conocida)"
 HOTSPOT_PSK="${HOTSPOT_PSK:-}" bash "$APP/bin/remote/hotspot.sh"
 
-log "iRig: volumen digital fijo en 0 dB"
+log "Volúmenes digitales fijos en 0 dB (iRig y jack)"
 if amixer -c IO sget 'USB Streaming' > /dev/null 2>&1; then
   amixer -q -c IO sset 'USB Streaming' 0dB unmute
-  alsactl store
 else
   echo "   iRig no conectado, se omite"
 fi
+if amixer -c Headphones sget PCM > /dev/null 2>&1; then
+  amixer -q -c Headphones sset PCM 0dB unmute
+else
+  echo "   el jack aparece después de reiniciar"
+fi
+alsactl store
 
 log "Servicios"
 NT_USER="$NT_USER" bash "$APP/bin/remote/units.sh"

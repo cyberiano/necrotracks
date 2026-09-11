@@ -175,6 +175,21 @@ async def post_unlearn(body: ActionIn):
     return _ok(await engine_request({"cmd": "unlearn", "action": body.action}))
 
 
+class OutputIn(BaseModel):
+    profile: str
+    fallback: str | None = None
+
+
+@app.get("/api/output")
+async def get_output():
+    return _ok(await engine_request({"cmd": "output"}))
+
+
+@app.post("/api/output")
+async def post_output(body: OutputIn):
+    return _ok(await engine_request({"cmd": "set_output", "profile": body.profile, "fallback": body.fallback}))
+
+
 @app.get("/api/info")
 def get_info():
     return {

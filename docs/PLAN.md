@@ -39,8 +39,17 @@ en "Diagnóstico del clipping" más abajo.
 - **Footswitches del iRig (Fase 4)**: los 4 manejan el show con el mapa por defecto; ~30 pisadas en el
   journal, cada una llegó una sola vez (la más cercana a 530 ms de la anterior: dos pisadas reales).
 
+- **Hotspot WiFi** (`bin/remote/hotspot.sh`, `necrotracks-hotspot.service`): red "Necrotracks" (WPA2, la
+  clave no está en el repo: `HOTSPOT_PSK` la primera vez), 5 GHz canal 36, la Pi en 192.168.4.1 y
+  `necrotracks.local` también por DNS. Se levanta solo si al arrancar no hay WiFi conocida en ~45 s.
+  Perfil creado en la Pi; **falta probarlo con el iPhone** (Cristian no estaba en casa).
+- **Jack de la Pi como respaldo** (perfil `pi-jack`, `fallback` en `config.json`): si al arrancar no está
+  la placa del perfil elegido, sale por el jack; cuando vuelve, con la reproducción parada, el engine se
+  reinicia para usarla. La web lo avisa en el Show y se elige en Ajustes. **Falta escucharlo.**
+
 **Próximos pasos, en orden:**
-1. **Usarla en un ensayo** (el primer uso real) manejándola desde la web. Si se traba → Raspberry Pi 4.
+1. **Usarla en un ensayo** (el primer uso real) manejándola desde la web, con el hotspot. Antes: probar
+   el hotspot con el iPhone y escuchar el jack. Si se traba → Raspberry Pi 4.
 2. **Fase 4, lo que falta**: LEDs de los footswitches como indicador de estado, OLED SH1106 +
    encoder, botones GPIO (los footswitches y el MIDI Learn ya están).
 3. Fase 5 (hotspot, chequeo pre-show en la UI, pánico, apagado seguro) y Fase 6 (MIDI de automatización).

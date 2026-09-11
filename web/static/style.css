@@ -133,6 +133,7 @@ a.name:hover { color: #fff; }
 .chip.ok { color: var(--ok); border-color: rgba(108, 192, 142, .35); }
 .chip.bad { color: var(--bad); border-color: rgba(255, 79, 89, .4); }
 .chip.live { color: #fff; background: var(--accent); border-color: var(--accent); }
+.chip.warn { color: var(--warn); border-color: rgba(227, 168, 56, .45); }
 
 .table-wrap { overflow-x: auto; background: var(--panel); border: 1px solid var(--line); }
 table { width: 100%; border-collapse: collapse; }
@@ -224,6 +225,9 @@ td.acts .btn + .btn { margin-left: 4px; }
 .note { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; margin: 16px 0; padding: 12px 14px; font-size: 14px;
   background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--accent); }
 .note .ic { color: var(--accent-hi); }
+.note.warn { border-left-color: var(--warn); }
+.note.warn .ic { color: var(--warn); }
+.deck > .note { margin: 0 0 18px; }
 .problems { display: grid; gap: 6px; margin: 16px 0; padding: 0; list-style: none; font-size: 14px; color: var(--bad); }
 .problems li { display: flex; align-items: flex-start; gap: 8px; }
 .problems .ic { margin-top: 2px; }

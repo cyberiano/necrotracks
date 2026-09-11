@@ -106,14 +106,16 @@ setInterval(renderConn, 2000);
 
 // ── Ruteo ────────────────────────────────────────────────────────────────────
 
-const views = {show: viewShow, setlists: viewSetlists, setlist: viewSetlist, biblioteca: viewLibrary, controles: viewControls};
+const views = {show: viewShow, setlists: viewSetlists, setlist: viewSetlist, biblioteca: viewLibrary,
+  ajustes: viewSettings, controles: viewSettings};
+const TAB_OF = {setlist: 'setlists', controles: 'ajustes'};
 let lastHash = location.hash, skipHash = false;
 
 function route() {
   current?.leave?.();
   const [name, arg] = location.hash.slice(1).split('/');
   const fn = views[name] || viewShow;
-  const tab = name === 'setlist' ? 'setlists' : (views[name] ? name : 'show');
+  const tab = TAB_OF[name] || (views[name] ? name : 'show');
   document.querySelectorAll('#tabs a').forEach(a => a.classList.toggle('on', a.getAttribute('href') === '#' + tab));
   window.scrollTo(0, 0);
   current = fn(arg ? decodeURIComponent(arg) : null);
@@ -169,6 +171,7 @@ function viewShow() {
     <div class="wrap">
       <section class="show" id="sh" hidden>
         <div class="deck">
+          <div id="sh-out" class="note warn" hidden></div>
           <div class="sh-top">
             <span id="sh-setlist" class="kicker"></span>
             <button id="sh-change" class="btn ghost sm">${ic('list')}Cambiar</button>
@@ -264,6 +267,12 @@ function viewShow() {
     $('#sh').hidden = false;
     const item = detail && detail.slug === s.slug ? detail.items[s.index] : null;
     const moving = s.state === 'playing' || s.state === 'paused';
+    const out = $('#sh-out');
+    out.hidden = !s.output?.fallback;
+    if (s.output?.fallback) {
+      out.innerHTML = `${ic('alert')}<span>Sale por el <strong>${esc(s.output.label)}</strong>: no está la interfaz.
+        Al conectarla vuelve sola, con la reproducción parada.</span>`;
+    }
     $('#sh-setlist').textContent = s.setlist;
     $('#sh-change').hidden = s.state !== 'stopped';
     const badge = $('#sh-state');
@@ -640,13 +649,23 @@ function viewLibrary() {
   return {onLive: syncBusy};
 }
 
-// ── Controles MIDI ───────────────────────────────────────────────────────────
+// ── Ajustes: salida de audio y controles MIDI ────────────────────────────────
 
-function viewControls() {
+function viewSettings() {
   const v = $('#view');
   v.innerHTML = `
     <div class="wrap"><section>
-      <h1 class="title">Controles MIDI</h1>
+      <h1 class="title">Salida de audio</h1>
+      <div class="panel">
+        <div id="out-now" class="port">Cargando…</div>
+        <div class="grid2">
+          <label class="field"><span>Perfil</span><select id="out-profile"></select></label>
+          <label class="field"><span>Si no está la interfaz</span><select id="out-fallback"></select></label>
+        </div>
+        <div class="actions"><button id="out-save" class="btn primary">Guardar</button>
+          <span class="muted small">Reinicia el engine: tarda unos segundos y solo se puede con la reproducción parada.</span></div>
+      </div>
+      <h2 class="title">Controles MIDI</h2>
       <div id="ct-port" class="port">Cargando…</div>
       <div class="table-wrap"><table class="controls">
         <thead><tr><th>Acción</th><th>Controles asignados</th><th></th></tr></thead>
@@ -657,11 +676,35 @@ function viewControls() {
         acción; una acción puede tener varios (por ejemplo, el mismo footswitch en modo normal y en modo stomp).
         El pedal de expresión se ignora. Anterior y Siguiente funcionan solo con la reproducción parada.</p>
     </section></div>`;
-  let data = null, learning = null;
+  let data = null, learning = null, out = null, engineWas = live.engine;
 
   async function load() {
     try { data = await api('GET', '/api/controls'); } catch (e) { $('#ct-port').textContent = e.message; return; }
     render();
+  }
+
+  async function loadOutput() {
+    try { out = await api('GET', '/api/output'); } catch (e) { $('#out-now').textContent = e.message; return; }
+    const opts = sel => Object.entries(out.profiles).map(([k, label]) => `<option value="${k}" ${k === sel ? 'selected' : ''}>${esc(label)}</option>`).join('');
+    $('#out-profile').innerHTML = opts(out.profile);
+    $('#out-fallback').innerHTML = `<option value="" ${out.fallback ? '' : 'selected'}>No sonar: esperar a la interfaz</option>${opts(out.fallback)}`;
+    renderOutput();
+  }
+
+  function renderOutput() {
+    if (!out) return;
+    const o = live.state?.output || out.output;
+    $('#out-now').innerHTML = o.fallback
+      ? `<span class="chip warn">${ic('alert')}Respaldo</span><span>Sale por el <strong>${esc(o.label)}</strong>: no está la interfaz.</span>`
+      : `<span class="chip ok">${ic('check')}Activa</span><span>Sale por <strong>${esc(o.label)}</strong></span>`;
+    $('#out-save').disabled = sounding();
+  }
+
+  function onLive() {
+    render();
+    renderOutput();
+    if (live.engine && !engineWas) loadOutput();  // volvió después de un reinicio
+    engineWas = live.engine;
   }
 
   function render() {
@@ -697,12 +740,19 @@ function viewControls() {
     } else if (b.dataset.forget) {
       try { await api('POST', '/api/unlearn', {action: b.dataset.forget}); } catch (err) { toast(err.message, 'bad'); }
       load();
+    } else if (b.id === 'out-save') {
+      try {
+        const r = await api('POST', '/api/output', {profile: $('#out-profile').value, fallback: $('#out-fallback').value || null});
+        toast(r.restart ? 'Guardado: reiniciando el engine…' : 'Guardado');
+        if (!r.restart) loadOutput();
+      } catch (err) { toast(err.message, 'bad'); }
     }
   });
 
   load();
+  loadOutput();
   const timer = setInterval(load, 1000);
-  return {onLive: render, leave: () => clearInterval(timer)};
+  return {onLive, leave: () => clearInterval(timer)};
 }
 
 // ── Arranque ─────────────────────────────────────────────────────────────────

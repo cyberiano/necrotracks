@@ -1,16 +1,20 @@
 """Engine de Necrotracks como servicio: dueño del audio, del show y de los controles MIDI.
 
-Abre el device una sola vez y lo mantiene abierto (ver docs/PLAN.md). Expone un socket unix
-en RAM (store.RUN/engine.sock) con JSON por línea, que usan la web, la pedalera, el OLED y el CLI:
+Abre el device una sola vez y lo mantiene abierto (ver docs/PLAN.md). Si la placa del perfil elegido
+no está y hay un respaldo (el jack de la Pi), sale por el respaldo; cuando vuelve la placa, con la
+reproducción parada, se reinicia para usarla. Expone un socket unix en RAM (store.RUN/engine.sock)
+con JSON por línea, que usan la web, la pedalera, el OLED y el CLI:
 
     → {"cmd": "play"}            play, pause, play_pause, stop, next, prev
     → {"cmd": "goto", "index": 3}
     → {"cmd": "load", "setlist": "show-necropolis"}   solo con la reproducción parada
-    → {"cmd": "state"}           ← {"ok": true, "state": {...}}
+    → {"cmd": "state"}           ← {"ok": true, "state": {...}}   el estado incluye "output"
     → {"cmd": "subscribe"}       ← {"state": {...}} en cada cambio y cada 0,5 s mientras suena
     → {"cmd": "controls"}        ← {"ok": true, "controls": {...}}  mapa MIDI y última pisada
     → {"cmd": "learn", "action": "next"}   espera la próxima pisada (hasta LEARN_TIMEOUT s)
     → {"cmd": "unlearn", "action": "next"}
+    → {"cmd": "output"}          ← salida activa, perfil elegido, respaldo y perfiles disponibles
+    → {"cmd": "set_output", "profile": "...", "fallback": "pi-jack"|null}   parado; reinicia el engine
 
 Cada pedido responde {"ok": true} o {"ok": false, "error": "..."}. El engine no depende de
 ningún cliente: si la web se cae, el show sigue, y los footswitches también.
@@ -26,13 +30,14 @@ from .show import Show
 
 log = logging.getLogger("necrotracks.engine")
 
-DEFAULT_CONFIG = {"profile": profiles.DEFAULT, "setlist": None,
+DEFAULT_CONFIG = {"profile": profiles.DEFAULT, "fallback": profiles.FALLBACK, "setlist": None,
                   "midi": {"port": controls.DEFAULT_PORT, "map": controls.DEFAULT_MAP}}
 EMPTY_STATE = {"setlist": None, "slug": None, "state": "stopped", "index": 0, "count": 0, "song": None, "block": None,
                "behavior": None, "next": None, "position": 0.0, "duration": 0.0, "wait_remaining": None}
 SHOW_COMMANDS = {"play", "pause", "play_pause", "stop", "next", "prev"}
 LEARN_TIMEOUT = 15
 MIDI_RETRY = 5  # segundos entre intentos de abrir el puerto MIDI
+PRIMARY_RETRY = 3  # segundos entre chequeos de si volvió la placa (sonando por el respaldo)
 
 
 class EngineError(Exception):
@@ -52,19 +57,45 @@ def load_config():
     return {**DEFAULT_CONFIG, **(store.read_json(config_path(), {}) or {})}
 
 
+def _output(used, wanted):
+    return {"profile": used, "label": profiles.get(used)["label"], "wanted": wanted, "fallback": used != wanted}
+
+
+def open_output(config, make_player=None):
+    """Abre la salida del perfil elegido; si su placa no está y hay respaldo, la del respaldo.
+    Devuelve (player, output). Sin ninguna: RuntimeError (el engine sale y systemd reintenta)."""
+    if make_player is None:
+        from .audio import Player
+
+        def make_player(profile):
+            return Player(profile["device"], profile["matrix"])
+
+    wanted = config["profile"]
+    try:
+        return make_player(profiles.get(wanted)), _output(wanted, wanted)
+    except RuntimeError as e:
+        backup = config.get("fallback")
+        if not backup or backup == wanted:
+            raise
+        log.warning("%s: salgo por el respaldo (%s)", e, backup)
+        return make_player(profiles.get(backup)), _output(backup, wanted)
+
+
 class Engine:
-    def __init__(self, player, config=None):
+    def __init__(self, player, config=None, output=None):
         self.player = player
         self.config = config or load_config()
+        self.output = output or _output(self.config["profile"], self.config["profile"])
         self.show = None
         self.loop = None
         self.subscribers = set()
         self._writers = set()
         self.controls = controls.Controls(self.config["midi"]["map"], self._control_action)
         self.midi_port = None  # lo fija main(); en los tests no se abre MIDI
+        self.restart = None  # lo fija main(): salir para que systemd reinicie con otra salida
 
     def state(self):
-        return self.show.snapshot() if self.show else dict(EMPTY_STATE)
+        return {**(self.show.snapshot() if self.show else EMPTY_STATE), "output": self.output}
 
     def _require_stopped(self, what):
         if self.show and self.show.state != "stopped":
@@ -109,7 +140,28 @@ class Engine:
             self.controls.forget(req.get("action"))
             self._save_midi()
             return {"ok": True}
+        if cmd == "output":
+            return {"ok": True, "output": self.output, "profile": self.config["profile"],
+                    "fallback": self.config.get("fallback"),
+                    "profiles": {k: p["label"] for k, p in profiles.PROFILES.items()}}
+        if cmd == "set_output":
+            return self.set_output(req.get("profile") or self.config["profile"], req.get("fallback") or None)
         raise EngineError(f"Comando desconocido: {cmd!r}")
+
+    def set_output(self, profile, fallback):
+        """Guarda la salida elegida y reinicia el engine para abrirla (el stream no se reconfigura en caliente)."""
+        self._require_stopped("cambiar la salida de audio")
+        profiles.get(profile)  # ValueError si no existe
+        if fallback:
+            profiles.get(fallback)
+        changed = (profile, fallback) != (self.config["profile"], self.config.get("fallback"))
+        self.config.update(profile=profile, fallback=fallback)
+        store.write_json(config_path(), self.config)
+        restart = changed and self.restart is not None
+        if restart:
+            log.info("salida: %s (respaldo: %s): reinicio el engine", profile, fallback or "ninguno")
+            self.loop.call_later(0.5, self.restart)  # después de responder
+        return {"ok": True, "restart": restart}
 
     async def learn(self, action):
         """Asigna a `action` el próximo control que se pise."""
@@ -145,7 +197,7 @@ class Engine:
         if self.show:
             store.write_json(cursor_path(), {"setlist": self.show.setlist["slug"], "index": snapshot["index"]})
         if self.loop:
-            self.loop.call_soon_threadsafe(self._broadcast, snapshot)
+            self.loop.call_soon_threadsafe(self._broadcast, {**snapshot, "output": self.output})
 
     def _broadcast(self, snapshot):
         for q in list(self.subscribers):
@@ -156,7 +208,7 @@ class Engine:
         while True:
             await asyncio.sleep(0.5)
             if self.show and self.show.state in ("playing", "waiting"):
-                self._broadcast(self.show.snapshot())
+                self._broadcast(self.state())
 
     async def _midi_watch(self):
         """Abre el puerto MIDI y, si todavía no está (otra pedalera, enchufada después), reintenta."""
@@ -172,6 +224,16 @@ class Engine:
                 log.warning("MIDI: no hay un puerto que contenga %r; reintento cada %d s", self.midi_port, MIDI_RETRY)
                 warned = True
             await asyncio.sleep(MIDI_RETRY)
+
+    async def _primary_watch(self):
+        """Sonando por el respaldo: cuando vuelve la placa del perfil elegido y está parado, reinicia para usarla."""
+        wanted = profiles.get(self.output["wanted"])
+        while True:
+            await asyncio.sleep(PRIMARY_RETRY)
+            if profiles.card_present(wanted) and (not self.show or self.show.state == "stopped"):
+                log.info("volvió %s: reinicio el engine para usarlo", wanted["device"])
+                self.restart()
+                return
 
     async def _client(self, reader, writer):
         self._writers.add(writer)
@@ -213,6 +275,8 @@ class Engine:
         tasks = [asyncio.create_task(self._ticker())]
         if self.midi_port:
             tasks.append(asyncio.create_task(self._midi_watch()))
+        if self.output["fallback"] and self.restart:
+            tasks.append(asyncio.create_task(self._primary_watch()))
         log.info("escuchando en %s", path)
         if ready:
             ready.set()
@@ -233,20 +297,18 @@ def socket_path():
 
 
 def main():
-    from .audio import Player
-
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     config = load_config()
-    profile = profiles.get(config["profile"])
     try:
-        player = Player(profile["device"], profile["matrix"])
-    except RuntimeError as e:  # sin el device, sale y systemd reintenta: una línea, sin traceback
+        player, output = open_output(config)
+    except RuntimeError as e:  # sin ninguna salida, sale y systemd reintenta: una línea, sin traceback
         log.error("%s", e)
         sys.exit(1)
     player.on_device_lost = lambda: os._exit(3)  # systemd lo reinicia; al volver, recupera la set list y el cursor
-    log.info("audio abierto: perfil %s", config["profile"])
-    engine = Engine(player, config)
+    log.info("audio abierto: %s%s", output["label"], " (RESPALDO)" if output["fallback"] else "")
+    engine = Engine(player, config, output)
     engine.midi_port = config["midi"]["port"]
+    engine.restart = lambda: os._exit(0)  # Restart=always: systemd lo levanta con la salida nueva
     if config["setlist"]:
         try:
             engine.load(config["setlist"])
