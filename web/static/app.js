@@ -639,7 +639,8 @@ function viewPrint(slug) {
             <button data-mode="piso" class="${mode === 'piso' ? 'on' : ''}">Para el piso</button>
             <button data-mode="tecnica" class="${mode === 'tecnica' ? 'on' : ''}">Técnica</button>
           </div>
-          <button id="pr-print" class="btn primary">${ic('print')}Imprimir o guardar PDF</button>
+          <a class="btn primary" id="pr-pdf" href="/api/setlists/${encodeURIComponent(slug)}/pdf?mode=${mode === 'piso' ? 'piso' : 'tecnica'}" target="_blank" rel="noopener">${ic('download')}Descargar PDF</a>
+          <button id="pr-print" class="btn">${ic('print')}Imprimir</button>
         </div>
         ${mode === 'piso' ? floorSheet() : techSheet()}
         <div class="textbox">
@@ -648,8 +649,10 @@ function viewPrint(slug) {
           <div class="actions"><button id="pr-copy" class="btn">${ic('copy')}Copiar</button>
             <span class="muted small">Si no copia, tocá el texto, seleccioná todo y copiá a mano.</span></div>
         </div>
-        <p class="fine">En la Mac: Imprimir → PDF → Guardar como PDF. En el iPhone: Imprimir → pellizcá para
-          abrir la vista previa → Compartir → Guardar en Archivos. Se imprime solo la hoja, sin los botones.</p>
+        <p class="fine">Descargar PDF lo arma la Pi y sirve en cualquier lado (en el iPhone: Compartir →
+          Guardar en Archivos). Imprimir usa el navegador y sale solo la hoja, sin los botones: anda en la Mac
+          y en Safari, pero <strong>no</strong> con la web instalada en el inicio del iPhone, que no tiene la
+          función de imprimir.</p>
       </section></div>`;
   }
 
@@ -734,20 +737,48 @@ function viewLibrary() {
       : 'WAV, FLAC, AIFF, MP3, MP4, ZIP o MIDI. Una canción por vez.';
   }
 
+  let songs = [], renaming = null;  // renaming: slug de la canción que se está renombrando
+
+  // En el celular las columnas no entran: los canales van resumidos en una línea (antes se escondían)
+  const detalle = s => [s.foh ? `Pista ${s.foh}` : null, s.click ? 'Click' : null, s.guia ? 'Guía' : null,
+    s.midi ? 'MIDI' : null, s.video ? `Video ${s.video.height}p` : null].filter(Boolean).join(' · ') || 'Sin canales';
+
   async function load() {
-    let songs;
     try { songs = await api('GET', '/api/songs'); } catch (e) { $('#lib').textContent = e.message; return; }
+    renderLib();
+  }
+
+  function renderLib() {
     $('#lib-count').textContent = pad2(songs.length);
     const yes = b => b ? `<span class="yes">${ic('check')}</span>` : '<span class="no">—</span>';
+    const nameCell = s => renaming === s.slug
+      ? `<div class="rn-cell"><input class="rn" value="${esc(s.name)}" aria-label="Nombre de la canción">
+          <button data-save-rn="${esc(s.slug)}" class="btn icon sm primary" title="Guardar">${ic('check')}</button>
+          <button data-cancel-rn="1" class="btn icon sm" title="Cancelar">${ic('x')}</button></div>`
+      : `<strong>${esc(s.name)}</strong>${s.warnings.map(w => `<div class="warn">${ic('alert')}<span>${esc(w)}</span></div>`).join('')}`;
     $('#lib').innerHTML = songs.length ? `<div class="table-wrap"><table class="songs">
       <thead><tr><th>Canción</th><th>Duración</th><th>Pista</th><th>Click</th><th>Guía</th><th>MIDI</th><th>Video</th><th>En set lists</th><th></th></tr></thead>
       <tbody>${songs.map(s => `<tr>
-        <td><strong>${esc(s.name)}</strong>${s.warnings.map(w => `<div class="warn">${ic('alert')}<span>${esc(w)}</span></div>`).join('')}</td>
+        <td>${nameCell(s)}</td>
         <td class="dur">${mmss(s.duration)}</td><td>${esc(s.foh || '—')}</td><td>${yes(s.click)}</td><td>${yes(s.guia)}</td><td>${yes(s.midi)}</td>
         <td>${s.video ? `<span class="yes">${s.video.height}p</span>` : '<span class="no">—</span>'}</td>
         <td class="small">${s.used_in.map(esc).join(', ') || '<span class="no">—</span>'}</td>
-        <td class="acts"><button data-del="${esc(s.slug)}" data-name="${esc(s.name)}" class="btn icon sm danger" title="${s.used_in.length ? 'Está en una set list' : 'Borrar de la biblioteca'}" ${s.used_in.length ? 'disabled' : ''}>${ic('trash')}</button></td>
+        <td class="acts"><button data-rn="${esc(s.slug)}" class="btn icon sm" title="Cambiar el nombre">${ic('edit')}</button><button data-del="${esc(s.slug)}" data-name="${esc(s.name)}" class="btn icon sm danger" title="${s.used_in.length ? 'Está en una set list' : 'Borrar de la biblioteca'}" ${s.used_in.length ? 'disabled' : ''}>${ic('trash')}</button></td>
+        <td class="det">${esc(detalle(s))}</td>
       </tr>`).join('')}</tbody></table></div>` : '<p class="muted">La biblioteca está vacía.</p>';
+    $('.rn')?.focus();
+  }
+
+  async function saveName(slug) {
+    const input = $('.rn');
+    const name = (input ? input.value : '').trim();
+    if (!name) return toast('La canción necesita un nombre', 'bad');
+    try {
+      await api('PATCH', '/api/songs/' + encodeURIComponent(slug), {name});
+      renaming = null;
+      toast('Renombrada');
+      load();
+    } catch (err) { toast(err.message, 'bad'); }
   }
 
   v.addEventListener('change', e => {
@@ -788,9 +819,19 @@ function viewLibrary() {
     }
   });
 
+  v.addEventListener('keydown', e => {  // Enter guarda el nombre, Escape cancela
+    if (!e.target.classList.contains('rn')) return;
+    if (e.key === 'Enter') { e.preventDefault(); saveName(renaming); }
+    if (e.key === 'Escape') { renaming = null; renderLib(); }
+  });
+
   v.addEventListener('click', async e => {
-    const b = e.target.closest('button[data-del]');
-    if (!b || !confirm(`¿Borrar "${b.dataset.name}" de la biblioteca? Se borran también sus archivos.`)) return;
+    const b = e.target.closest('button');
+    if (!b) return;
+    if (b.dataset.rn) { renaming = b.dataset.rn; return renderLib(); }
+    if (b.dataset.cancelRn) { renaming = null; return renderLib(); }
+    if (b.dataset.saveRn) return saveName(b.dataset.saveRn);
+    if (!b.dataset.del || !confirm(`¿Borrar "${b.dataset.name}" de la biblioteca? Se borran también sus archivos.`)) return;
     try { await api('DELETE', '/api/songs/' + encodeURIComponent(b.dataset.del)); toast('Borrada'); load(); }
     catch (err) { toast(err.message, 'bad'); }
   });

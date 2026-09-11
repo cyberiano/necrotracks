@@ -256,6 +256,18 @@ Degrada bien: si se corta el WS, muestra "desconectado" y no bloquea nada.
   `@media print` solo saca lo que la rodea. Abajo, la lista **en texto para mandar por mensaje**.
   Ojo: **la web va por HTTP**, así que no hay `navigator.share` ni portapapeles moderno (piden HTTPS): el texto
   va en un cuadro seleccionable y el botón Copiar cae a `execCommand`.
+  Al imprimir va **solo la hoja**: la regla es por exclusión (`section > *:not(.sheet)`), no por lista, porque
+  con una lista se coló en el papel el párrafo de ayuda que se agregó después (lo vio Cristian en el iPhone).
+- **PDF hecho por la Pi** (`GET /api/setlists/SLUG/pdf?mode=piso|tecnica`, `web/pdf.py` con **fpdf2**: Python
+  puro, ~340 KB, no compila nada y anda sin internet). Es la vía del celular: **la web instalada en el inicio del
+  iPhone no trae la función de imprimir de Safari**; Cristian consiguió habilitarla, pero hay que **salir y volver
+  a entrar en la app** para que aparezca el diálogo. Desde la Mac, imprimir la hoja alcanza.
+  fpdf2 usa las fuentes del propio PDF (latin-1): nada de rayas largas ni comillas tipográficas.
+- **Renombrar canciones** (`PATCH /api/songs/SLUG`): cambia solo el nombre en `song.json`; **el slug no cambia**,
+  que es con lo que la encuentran las set lists, el render y el video. Nombres como "Obsolete Stimulus click L -
+  foh R" salen del archivo importado y antes no había forma de arreglarlos. No mientras suena.
+- **Biblioteca en el celular**: los canales (pista, click, guía, MIDI, video) iban en columnas que el CSS
+  **escondía** por debajo de 720 px. Ahora van resumidos en una línea por canción.
 - Falta: elegir el perfil de hardware (hoy solo se ve cuál está activo en `/api/info`).
 
 ### Fase 4 — Controles físicos

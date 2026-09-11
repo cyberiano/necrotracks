@@ -16,7 +16,7 @@ import subprocess
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from starlette.concurrency import run_in_threadpool
@@ -441,6 +441,26 @@ def get_songs():
     return [{**s, "used_in": used.get(s["slug"], [])} for s in library.list_songs()]
 
 
+class SongIn(BaseModel):
+    name: str
+
+
+@app.patch("/api/songs/{slug}")
+def patch_song(slug: str, body: SongIn):
+    """Renombra una canción. El slug no cambia: es con lo que la encuentran las set lists y el video."""
+    song = library.get_song(slug)
+    if song is None:
+        raise HTTPException(404, "No existe esa canción")
+    name = body.name.strip()
+    if not name:
+        raise HTTPException(400, "La canción necesita un nombre")
+    if store.is_playing():
+        raise HTTPException(409, "Está sonando: renombrá con la reproducción parada")
+    song["name"] = name
+    store.write_json(store.library_dir() / slug / "song.json", song)
+    return song
+
+
 @app.delete("/api/songs/{slug}")
 def delete_song(slug: str):
     if library.get_song(slug) is None:
@@ -621,6 +641,21 @@ def put_setlist(slug: str, body: SetlistIn):
     sl.update(name=name, items=items)  # el slug no cambia al renombrar
     setlists.save(sl)
     return _setlist_view(sl)
+
+
+@app.get("/api/setlists/{slug}/pdf")
+def get_setlist_pdf(slug: str, mode: str = "piso"):
+    """La set list en PDF. Desde la Mac alcanza con imprimir la hoja; en el iPhone, la web instalada en el
+    inicio no tiene la función de imprimir de Safari, así que el archivo lo tiene que armar la Pi."""
+    if mode not in ("piso", "tecnica"):
+        raise HTTPException(400, f"Hoja desconocida: {mode}")
+    sl = _setlist_view(_get_setlist(slug))
+    try:
+        from .pdf import setlist_pdf
+    except ImportError:  # falta fpdf2 (deploy viejo): que se entienda, en vez de un 500
+        raise HTTPException(503, "Falta la librería de PDF en la Pi: corré bin/deploy.sh sin --fast") from None
+    return Response(setlist_pdf(sl, mode, setlists.BEHAVIORS), media_type="application/pdf",
+                    headers={"Content-Disposition": f'attachment; filename="{slug}-{mode}.pdf"'})
 
 
 @app.delete("/api/setlists/{slug}")

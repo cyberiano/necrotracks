@@ -46,6 +46,39 @@ def test_biblioteca_y_set_lists(client, tmp_path):
     assert library.list_songs() == []
 
 
+def test_renombrar_cancion(client, tmp_path):
+    library.import_song(write(tmp_path / "Obsolete Stimulus click L - foh R.wav", tone(220)))
+    slug = library.list_songs()[0]["slug"]
+    setlists.create("Ensayo", [slug])
+
+    r = client.patch(f"/api/songs/{slug}", json={"name": "  Obsolete Stimulus  "})
+    assert r.status_code == 200 and r.json()["name"] == "Obsolete Stimulus"
+    assert r.json()["slug"] == slug  # el slug no cambia: es con lo que la encuentran las set lists
+    assert setlists.get("ensayo")["items"][0]["song"] == slug
+    assert client.get("/api/songs").json()[0]["name"] == "Obsolete Stimulus"
+
+    assert client.patch(f"/api/songs/{slug}", json={"name": "  "}).status_code == 400
+    assert client.patch("/api/songs/nada", json={"name": "X"}).status_code == 404
+    store.set_playing(True)
+    try:
+        assert client.patch(f"/api/songs/{slug}", json={"name": "Otra"}).status_code == 409
+    finally:
+        store.set_playing(False)
+    assert library.get_song(slug)["name"] == "Obsolete Stimulus"
+
+
+def test_setlist_en_pdf(client, tmp_path):
+    library.import_song(write(tmp_path / "Uno.wav", tone(220)), name="Necrópolis")
+    setlists.create("Ensayo del viernes", ["necropolis"])
+    for mode in ("piso", "tecnica"):
+        r = client.get(f"/api/setlists/ensayo-del-viernes/pdf?mode={mode}")
+        assert r.status_code == 200 and r.headers["content-type"] == "application/pdf"
+        assert f"ensayo-del-viernes-{mode}.pdf" in r.headers["content-disposition"]
+        assert r.content.startswith(b"%PDF") and len(r.content) > 800
+    assert client.get("/api/setlists/ensayo-del-viernes/pdf?mode=volar").status_code == 400
+    assert client.get("/api/setlists/nada/pdf").status_code == 404
+
+
 def test_import_por_la_web(client, tmp_path):
     stereo = write(tmp_path / "x.wav", np.stack([tone(1000), tone(220)], axis=1)).read_bytes()
     assert client.delete("/api/incoming").status_code == 200

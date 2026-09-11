@@ -145,6 +145,9 @@ td.n { width: 1%; font: 12px var(--mono); color: var(--faint); }
 td.acts { width: 1%; white-space: nowrap; }
 td.acts .btn + .btn { margin-left: 4px; }
 .dur { font: 12px var(--mono); color: var(--faint); }
+.songs td.det { display: none; }  /* el resumen de canales: en el celular reemplaza a las columnas */
+.songs input.rn { width: 100%; }
+.rn-cell { display: flex; align-items: center; gap: 6px; }
 .yes { color: var(--ok); }
 .no { color: var(--faint); }
 .warn { display: flex; align-items: flex-start; gap: 6px; margin-top: 4px; font-size: 13px; color: var(--warn); }
@@ -299,7 +302,10 @@ input[type=checkbox]:disabled { opacity: .35; cursor: default; }
 
 @page { size: A4 portrait; margin: 14mm; }
 @media print {
-  #bar, #banner, #tabs, #toast, #reload, .sheet-actions, .back, .textbox, .hint { display: none !important; }
+  /* Solo la hoja: lo que la acompaña en pantalla (botones, ayudas, el texto para mensaje) no se imprime.
+     Por regla general, no por lista: si no, cualquier cosa que se agregue después se cuela en el papel. */
+  #bar, #banner, #tabs, #toast, #reload { display: none !important; }
+  main .wrap > section > *:not(.sheet) { display: none !important; }
   html, body { background: #fff !important; }
   main { padding: 0 !important; }
   .wrap { max-width: none; padding: 0; }
@@ -390,7 +396,9 @@ input[type=checkbox]:disabled { opacity: .35; cursor: default; }
   .items input.blk { width: 100%; }
   .items select { flex: 1; max-width: none; min-width: 0; }
   .beh-cell { width: 100%; }
-  .songs tr { grid-template-columns: minmax(0, 1fr) auto auto; grid-template-areas: "name dur del" "sets sets sets"; align-items: center; }
+  .songs tr { grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-areas: "name dur del" "det det det" "sets sets sets"; align-items: center; }
+  .songs td.det { display: block; grid-area: det; font-size: 13px; color: var(--muted); }
   .songs td:nth-child(1) { grid-area: name; }
   .songs td:nth-child(2) { grid-area: dur; }
   .songs td:nth-child(8) { grid-area: sets; color: var(--muted); }
