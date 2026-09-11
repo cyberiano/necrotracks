@@ -1,15 +1,18 @@
 'use strict';
-// Necrotracks — web sin build step. Tres vistas por hash: #show, #setlists (+ #setlist/SLUG), #biblioteca.
+// Necrotracks — web sin build step. Vistas por hash: #show, #setlists (+ #setlist/SLUG), #biblioteca, #controles.
 // El estado en vivo llega por SSE (/api/events); si se corta, se muestra y el navegador reconecta solo.
 
 const $ = (sel, el = document) => el.querySelector(sel);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
 const mmss = s => { s = Math.max(0, Math.round(s || 0)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
+const pad2 = n => String(n).padStart(2, '0');
+const ic = (name, cls = '') => `<svg class="ic${cls ? ' ' + cls : ''}" aria-hidden="true"><use href="#i-${name}"/></svg>`;
+const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 const STATE_LABEL = {stopped: 'Parado', playing: 'Sonando', paused: 'En pausa', waiting: 'Esperando'};
 
 let info = null;
 const live = {engine: null, state: null, at: 0};
-let current = null;  // vista activa: {dirty?(), onLive?(), onKey?(e)}
+let current = null;  // vista activa: {dirty?(), onLive?(), onKey?(e), leave?()}
 
 // ── API ──────────────────────────────────────────────────────────────────────
 
@@ -82,12 +85,12 @@ const sounding = () => live.state && live.state.state !== 'stopped';
 
 function renderConn() {
   const c = $('#conn'), b = $('#banner');
-  let cls = 'ok', txt, banner = '';
+  let cls = 'ok', txt, banner = '', kind = '';
   if (!webOk()) {
     cls = 'bad'; txt = 'Sin conexión';
     banner = 'Sin conexión con Necrotracks. Si estaba sonando, sigue sonando: lo que se cortó es la web.';
   } else if (!live.engine) {
-    cls = 'bad'; txt = 'Engine caído';
+    cls = 'bad'; txt = 'Engine caído'; kind = 'engine';
     banner = 'El engine no responde. ¿El iRig está enchufado? Al reconectarlo vuelve solo, con la set list cargada.';
   } else {
     txt = live.state?.setlist ? STATE_LABEL[live.state.state] : 'Sin set list';
@@ -96,6 +99,7 @@ function renderConn() {
   c.className = 'conn ' + cls;
   c.textContent = txt;
   b.textContent = banner;
+  b.className = kind;
   b.hidden = !banner;
 }
 setInterval(renderConn, 2000);
@@ -109,9 +113,9 @@ function route() {
   current?.leave?.();
   const [name, arg] = location.hash.slice(1).split('/');
   const fn = views[name] || viewShow;
-  document.body.classList.toggle('show-mode', fn === viewShow);
   const tab = name === 'setlist' ? 'setlists' : (views[name] ? name : 'show');
-  document.querySelectorAll('nav a').forEach(a => a.classList.toggle('on', a.getAttribute('href') === '#' + tab));
+  document.querySelectorAll('#tabs a').forEach(a => a.classList.toggle('on', a.getAttribute('href') === '#' + tab));
+  window.scrollTo(0, 0);
   current = fn(arg ? decodeURIComponent(arg) : null);
 }
 
@@ -129,7 +133,7 @@ document.addEventListener('keydown', e => {
   current?.onKey?.(e);
 });
 
-// ── Show Mode ────────────────────────────────────────────────────────────────
+// ── Piezas comunes ───────────────────────────────────────────────────────────
 
 function describe(item) {
   if (!item) return '';
@@ -137,35 +141,73 @@ function describe(item) {
   return info.behaviors[item.behavior] || item.behavior;
 }
 
+function statusChip(problems) {
+  return problems.length
+    ? `<span class="chip bad">${ic('alert')}${plural(problems.length, 'problema', 'problemas')}</span>`
+    : `<span class="chip ok">${ic('check')}Lista</span>`;
+}
+
+function setlistCard(l, i, {link = false, loaded = null, primary = false} = {}) {
+  const name = link ? `<a class="name" href="#setlist/${encodeURIComponent(l.slug)}">${esc(l.name)}</a>`
+    : `<span class="name">${esc(l.name)}</span>`;
+  return `<li class="card">
+    <span class="idx">${pad2(i + 1)}</span>
+    <div class="body">${name}
+      <div class="meta"><span>${plural(l.count, 'canción', 'canciones')}</span><span>${mmss(l.duration)}</span>
+        ${statusChip(l.problems)}${l.slug === loaded ? '<span class="chip live">Cargada</span>' : ''}</div>
+      ${!link && l.problems.length ? `<div class="warn">${ic('alert')}<span>${esc(l.problems[0])}</span></div>` : ''}
+    </div>
+    <button class="btn ${primary ? 'primary' : ''}" data-load="${esc(l.slug)}" ${l.problems.length ? 'disabled' : ''}>Cargar</button>
+  </li>`;
+}
+
+// ── Show Mode ────────────────────────────────────────────────────────────────
+
 function viewShow() {
   const v = $('#view');
   v.innerHTML = `
-    <section class="show" id="sh" hidden>
-      <div class="sh-top">
-        <span id="sh-setlist" class="muted"></span>
-        <button id="sh-change" class="link">Cambiar set list</button>
-      </div>
-      <div class="sh-head"><span id="sh-state" class="badge"></span><span id="sh-block" class="block"></span></div>
-      <div class="sh-song"><span id="sh-num" class="num"></span><h1 id="sh-song"></h1></div>
-      <div class="progress"><div id="sh-bar"></div></div>
-      <div class="times"><span id="sh-pos"></span><span id="sh-rem"></span></div>
-      <div id="sh-after" class="after"></div>
-      <div id="sh-next" class="next"></div>
-      <div class="transport">
-        <button data-cmd="prev" class="tbtn"><b>⏮</b><small>Anterior</small></button>
-        <button data-cmd="play_pause" id="sh-play" class="tbtn main"><b>▶</b><small>Play</small></button>
-        <button data-cmd="stop" id="sh-stop" class="tbtn stop"><b>■</b><small>Stop</small></button>
-        <button data-cmd="next" class="tbtn"><b>⏭</b><small>Siguiente</small></button>
-      </div>
-      <p class="muted small hint">Anterior, Siguiente y tocar una canción de la lista funcionan solo con la reproducción parada.
-        Teclado: espacio = play/pausa · Esc = stop · ← → = anterior/siguiente.</p>
-      <ol id="sh-list" class="sh-list"></ol>
-    </section>
-    <section id="sh-pick" hidden>
-      <h2>Elegí la set list</h2>
-      <div id="sh-pick-list" class="muted">Cargando…</div>
-      <button id="sh-pick-cancel" class="link" hidden>Volver al show</button>
-    </section>`;
+    <div class="wrap">
+      <section class="show" id="sh" hidden>
+        <div class="deck">
+          <div class="sh-top">
+            <span id="sh-setlist" class="kicker"></span>
+            <button id="sh-change" class="btn ghost sm">${ic('list')}Cambiar</button>
+          </div>
+          <div class="sh-status"><span id="sh-state" class="state"></span><span id="sh-block" class="block"></span><span id="sh-num" class="num"></span></div>
+          <h1 id="sh-song" class="sh-title"></h1>
+          <div class="meter"><div id="sh-bar" class="meter-fill"></div></div>
+          <div class="times"><span id="sh-pos"></span><span id="sh-rem" class="rem"></span></div>
+          <div class="info">
+            <div class="info-row"><span id="sh-after-label" class="label">Al terminar</span><span id="sh-after"></span></div>
+            <div class="info-row"><span class="label">Próxima</span><span id="sh-next"></span></div>
+          </div>
+          <div class="transport">
+            <button data-cmd="prev" class="btn tbtn">${ic('prev')}<span>Anterior</span></button>
+            <button data-cmd="play_pause" id="sh-play" class="btn tbtn main">${ic('play')}<span>Play</span></button>
+            <button data-cmd="stop" id="sh-stop" class="btn tbtn stop">${ic('stop')}<span>Stop</span></button>
+            <button data-cmd="next" class="btn tbtn">${ic('next')}<span>Siguiente</span></button>
+          </div>
+          <p class="hint">Anterior, Siguiente y elegir de la lista funcionan solo con la reproducción parada.
+            <span class="keys"><kbd>Espacio</kbd> play/pausa · <kbd>Esc</kbd> stop · <kbd>←</kbd><kbd>→</kbd> anterior/siguiente</span></p>
+        </div>
+        <aside>
+          <h2 class="title">Set list <span id="sh-count" class="count"></span></h2>
+          <ol id="sh-list" class="sh-list"></ol>
+        </aside>
+      </section>
+      <section id="sh-pick" hidden>
+        <div class="empty">
+          <svg class="emblem" aria-hidden="true"><use href="#emblem"/></svg>
+          <h1 class="title center">Elegí la set list</h1>
+        </div>
+        <ul id="sh-pick-list" class="cards pick-list"><li class="muted center">Cargando…</li></ul>
+        <p class="center"><button id="sh-pick-cancel" class="btn ghost sm" hidden>${ic('back')}Volver al show</button></p>
+      </section>
+      <section id="sh-off" class="empty" hidden>
+        <svg class="emblem dim" aria-hidden="true"><use href="#emblem"/></svg>
+        <p>Esperando al engine…</p>
+      </section>
+    </div>`;
 
   let detail = null, detailSlug = null, picking = false;
 
@@ -179,13 +221,14 @@ function viewShow() {
   function renderList() {
     const s = live.state, ol = $('#sh-list');
     if (!detail || !s) { ol.innerHTML = ''; return; }
+    $('#sh-count').textContent = pad2(detail.items.length);
     let block;
     ol.innerHTML = detail.items.map((it, i) => {
       const song = detail.songs[it.song];
       let head = '';
-      if (it.block !== block) { block = it.block; head = `<li class="blk-head">${esc(block || 'Sin bloque')}</li>`; }
-      return `${head}<li data-i="${i}" class="${i === s.index ? 'cur' : ''}">
-        <span class="n">${i + 1}</span><span class="t">${esc(song ? song.name : it.song)}</span>
+      if (it.block !== block) { block = it.block; if (block) head = `<li class="blk-head">${esc(block)}</li>`; }
+      return `${head}<li data-i="${i}">
+        <span class="n">${pad2(i + 1)}</span><span class="t">${esc(song ? song.name : it.song)}</span>
         <span class="d">${song ? mmss(song.duration) : ''}</span></li>`;
     }).join('');
   }
@@ -196,12 +239,10 @@ function viewShow() {
     $('#sh-pick').hidden = false;
     $('#sh-pick-cancel').hidden = !cancelable;
     let lists;
-    try { lists = await api('GET', '/api/setlists'); } catch (e) { $('#sh-pick-list').textContent = e.message; return; }
-    $('#sh-pick-list').innerHTML = lists.length ? `<ul class="cards">${lists.map(l => `
-      <li><div><strong>${esc(l.name)}</strong><br><span class="muted small">${l.count} canciones · ${mmss(l.duration)}</span>
-        ${l.problems.length ? `<br><span class="bad-text small">✗ ${esc(l.problems[0])}${l.problems.length > 1 ? ` (+${l.problems.length - 1})` : ''}</span>` : ''}</div>
-        <button data-load="${esc(l.slug)}" class="primary" ${l.problems.length ? 'disabled' : ''}>Cargar</button></li>`).join('')}</ul>`
-      : 'No hay set lists. Armá una en <a href="#setlists">Set lists</a>.';
+    try { lists = await api('GET', '/api/setlists'); } catch (e) { $('#sh-pick-list').innerHTML = `<li class="bad-text center">${esc(e.message)}</li>`; return; }
+    $('#sh-pick-list').innerHTML = lists.length
+      ? lists.map((l, i) => setlistCard(l, i, {primary: true, loaded: live.state?.slug})).join('')
+      : '<li class="muted center">No hay set lists. Armá una en <a href="#setlists">Set lists</a>.</li>';
   }
 
   function hidePicker() {
@@ -212,10 +253,14 @@ function viewShow() {
 
   function render() {
     const s = live.state;
-    if (!live.engine || !s) { $('#sh').hidden = true; $('#sh-pick').hidden = true; return; }
+    if (!live.engine || !s) {
+      $('#sh').hidden = true; $('#sh-pick').hidden = true; $('#sh-off').hidden = false;
+      return;
+    }
+    $('#sh-off').hidden = true;
     if (!s.setlist) { if (!picking) showPicker(false); return; }
     if (picking) return;
-    if (s.slug !== detailSlug) { loadDetail(s.slug); }
+    if (s.slug !== detailSlug) loadDetail(s.slug);
     $('#sh').hidden = false;
     const item = detail && detail.slug === s.slug ? detail.items[s.index] : null;
     const moving = s.state === 'playing' || s.state === 'paused';
@@ -223,25 +268,25 @@ function viewShow() {
     $('#sh-change').hidden = s.state !== 'stopped';
     const badge = $('#sh-state');
     badge.textContent = STATE_LABEL[s.state];
-    badge.className = 'badge ' + s.state;
+    badge.className = 'state ' + s.state;
     $('#sh-block').textContent = s.block || '';
-    $('#sh-num').textContent = `${s.index + 1}/${s.count}`;
+    $('#sh-num').textContent = `${pad2(s.index + 1)} / ${pad2(s.count)}`;
     $('#sh-song').textContent = s.song || '—';
     const pos = moving ? s.position : 0;
     $('#sh-bar').style.width = s.duration ? `${Math.min(100, 100 * pos / s.duration)}%` : '0';
     $('#sh-pos').textContent = mmss(pos);
     $('#sh-rem').textContent = '−' + mmss(s.duration - pos);
-    const after = $('#sh-after');
     if (s.state === 'waiting') {
-      after.innerHTML = `<span class="countdown">Arranca en ${Math.ceil(s.wait_remaining)} s</span>
-        <span class="muted small">Play = ya · Stop = cancelar la espera</span>`;
+      $('#sh-after-label').textContent = 'Arranca en';
+      $('#sh-after').innerHTML = `<span class="countdown">${Math.ceil(s.wait_remaining)} s</span>
+        <span class="muted small">Play = ya · Stop = cancelar</span>`;
     } else {
-      after.innerHTML = item ? `<span class="muted">Al terminar:</span> ${esc(describe(item))}` : '';
+      $('#sh-after-label').textContent = 'Al terminar';
+      $('#sh-after').textContent = describe(item);
     }
-    $('#sh-next').innerHTML = s.next ? `<span class="muted">Próxima:</span> ${esc(s.next)}` : '<span class="muted">Última de la set list</span>';
-    const play = $('#sh-play');
-    play.innerHTML = s.state === 'playing' ? '<b>⏸</b><small>Pausa</small>'
-      : s.state === 'waiting' ? '<b>▶</b><small>Ya</small>' : '<b>▶</b><small>Play</small>';
+    $('#sh-next').innerHTML = s.next ? esc(s.next) : '<span class="muted">Última de la set list</span>';
+    $('#sh-play').innerHTML = s.state === 'playing' ? `${ic('pause')}<span>Pausa</span>`
+      : `${ic('play')}<span>${s.state === 'waiting' ? 'Ya' : 'Play'}</span>`;
     v.querySelector('[data-cmd=prev]').disabled = moving || s.index === 0;
     v.querySelector('[data-cmd=next]').disabled = moving || s.index + 1 >= s.count;
     $('#sh-stop').disabled = s.state === 'stopped';
@@ -281,25 +326,21 @@ function viewShow() {
 function viewSetlists() {
   const v = $('#view');
   v.innerHTML = `
-    <section>
-      <h2>Set lists</h2>
+    <div class="wrap"><section>
+      <h1 class="title">Set lists</h1>
       <form id="sl-new" class="row">
         <input name="name" placeholder="Nombre de la set list nueva" required>
-        <button class="primary">Crear</button>
+        <button class="btn primary">${ic('plus')}Crear</button>
       </form>
-      <div id="sl-list" class="muted">Cargando…</div>
-    </section>`;
+      <ul id="sl-list" class="cards"><li class="muted">Cargando…</li></ul>
+    </section></div>`;
 
   async function load() {
     let lists;
-    try { lists = await api('GET', '/api/setlists'); } catch (e) { $('#sl-list').textContent = e.message; return; }
-    const loaded = live.state?.slug;
-    $('#sl-list').innerHTML = lists.length ? `<ul class="cards">${lists.map(l => `
-      <li><a href="#setlist/${encodeURIComponent(l.slug)}"><strong>${esc(l.name)}</strong>${l.slug === loaded ? ' <span class="tag">cargada</span>' : ''}<br>
-        <span class="muted small">${l.count} canciones · ${mmss(l.duration)}</span>
-        ${l.problems.length ? `<br><span class="bad-text small">✗ ${l.problems.length} problema(s)</span>` : '<br><span class="ok-text small">✓ Lista para tocar</span>'}</a>
-        <button data-load="${esc(l.slug)}" ${l.problems.length ? 'disabled' : ''}>Cargar</button></li>`).join('')}</ul>`
-      : '<p>Todavía no hay set lists.</p>';
+    try { lists = await api('GET', '/api/setlists'); } catch (e) { $('#sl-list').innerHTML = `<li class="bad-text">${esc(e.message)}</li>`; return; }
+    $('#sl-list').innerHTML = lists.length
+      ? lists.map((l, i) => setlistCard(l, i, {link: true, loaded: live.state?.slug})).join('')
+      : '<li class="muted">Todavía no hay set lists.</li>';
   }
 
   v.addEventListener('submit', async e => {
@@ -320,7 +361,7 @@ function viewSetlists() {
 
 function viewSetlist(slug) {
   const v = $('#view');
-  v.innerHTML = '<section class="muted">Cargando…</section>';
+  v.innerHTML = '<div class="wrap"><section class="muted">Cargando…</section></div>';
   let sl = null, songs = [], saved = '';
   const model = () => JSON.stringify({name: sl.name, items: sl.items});
   const dirty = () => sl !== null && model() !== saved;
@@ -330,7 +371,10 @@ function viewSetlist(slug) {
   async function load() {
     try {
       [sl, songs] = await Promise.all([api('GET', '/api/setlists/' + encodeURIComponent(slug)), api('GET', '/api/songs')]);
-    } catch (e) { v.innerHTML = `<section><p class="bad-text">${esc(e.message)}</p><a href="#setlists">Volver</a></section>`; return; }
+    } catch (e) {
+      v.innerHTML = `<div class="wrap"><section><a href="#setlists" class="back">${ic('back')}Set lists</a><p class="bad-text">${esc(e.message)}</p></section></div>`;
+      return;
+    }
     saved = model();
     render();
   }
@@ -341,55 +385,56 @@ function viewSetlist(slug) {
   function render() {
     const total = sl.items.reduce((a, it) => a + songDur(it.song), 0);
     v.innerHTML = `
-      <section class="editor">
-        <a href="#setlists" class="link">← Set lists</a>
+      <div class="wrap"><section class="editor">
+        <a href="#setlists" class="back">${ic('back')}Set lists</a>
         <input id="ed-name" class="title-input" value="${esc(sl.name)}" aria-label="Nombre de la set list">
-        <p class="muted small">${sl.items.length} canciones · ${mmss(total)}</p>
+        <div class="meta"><span>${plural(sl.items.length, 'canción', 'canciones')}</span><span>${mmss(total)}</span></div>
         <div id="ed-loaded"></div>
+        <h2 class="title">Canciones</h2>
         <div class="table-wrap"><table class="items">
           <thead><tr><th>#</th><th>Canción</th><th>Bloque</th><th>Al terminar</th><th></th></tr></thead>
           <tbody>${sl.items.map((it, i) => `
             <tr data-i="${i}">
-              <td class="n">${i + 1}</td>
-              <td>${esc(songName(it.song))} <span class="muted small">${mmss(songDur(it.song))}</span></td>
+              <td class="n">${pad2(i + 1)}</td>
+              <td>${esc(songName(it.song))} <span class="dur">${mmss(songDur(it.song))}</span></td>
               <td><input class="blk" value="${esc(it.block || '')}" placeholder="—" aria-label="Bloque"></td>
-              <td class="beh-cell"><select class="beh" aria-label="Al terminar">${behaviorOptions(it.behavior)}</select>
-                <span class="wait-box" ${it.behavior === 'wait' ? '' : 'hidden'}><input class="wait" type="number" min="1" step="1" value="${it.wait || 5}" aria-label="Segundos"> s</span></td>
-              <td class="acts"><button data-act="up" ${i === 0 ? 'disabled' : ''} title="Subir">↑</button><button data-act="down" ${i + 1 === sl.items.length ? 'disabled' : ''} title="Bajar">↓</button><button data-act="rm" title="Sacar">✕</button></td>
+              <td><div class="beh-cell"><select class="beh" aria-label="Al terminar">${behaviorOptions(it.behavior)}</select>
+                <span class="wait-box" ${it.behavior === 'wait' ? '' : 'hidden'}><input class="wait" type="number" min="1" step="1" value="${it.wait || 5}" aria-label="Segundos"> s</span></div></td>
+              <td class="acts"><button class="btn icon sm" data-act="up" ${i === 0 ? 'disabled' : ''} title="Subir">${ic('up')}</button><button class="btn icon sm" data-act="down" ${i + 1 === sl.items.length ? 'disabled' : ''} title="Bajar">${ic('down')}</button><button class="btn icon sm danger" data-act="rm" title="Sacar de la set list">${ic('x')}</button></td>
             </tr>`).join('') || '<tr><td colspan="5" class="muted">Vacía: agregá canciones abajo.</td></tr>'}
           </tbody>
         </table></div>
         <div class="row">
-          <select id="ed-add">${songs.map(s => `<option value="${esc(s.slug)}">${esc(s.name)} (${mmss(s.duration)})</option>`).join('')}</select>
-          <button id="ed-add-btn" ${songs.length ? '' : 'disabled'}>Agregar</button>
+          <select id="ed-add" aria-label="Canción para agregar">${songs.map(s => `<option value="${esc(s.slug)}">${esc(s.name)} (${mmss(s.duration)})</option>`).join('')}</select>
+          <button id="ed-add-btn" class="btn" ${songs.length ? '' : 'disabled'}>${ic('plus')}Agregar</button>
         </div>
-        <details class="block-tool">
+        <details class="tool">
           <summary>Asignar un bloque a varias canciones</summary>
-          <div class="row wrap">
+          <div class="row">
             <input id="bt-name" placeholder="Nombre del bloque">
             <label>de <input id="bt-from" type="number" min="1" value="1" class="short"></label>
             <label>a <input id="bt-to" type="number" min="1" value="${Math.max(1, sl.items.length)}" class="short"></label>
-            <select id="bt-beh"><option value="">(no cambiar el comportamiento)</option>${behaviorOptions('')}</select>
+            <select id="bt-beh"><option value="">No cambiar el comportamiento</option>${behaviorOptions('')}</select>
             <label id="bt-wait-box" hidden><input id="bt-wait" type="number" min="1" value="5" class="short"> s</label>
-            <button id="bt-apply">Aplicar</button>
+            <button id="bt-apply" class="btn sm">Aplicar</button>
           </div>
         </details>
         <div id="ed-problems">${problemsHtml(sl.problems)}</div>
-        <div class="row actions">
-          <button id="ed-save" class="primary">Guardar</button>
+        <div class="actions">
+          <button id="ed-save" class="btn primary">Guardar</button>
           <span id="ed-dirty" class="muted small"></span>
           <span class="spacer"></span>
-          <button id="ed-del" class="danger">Borrar set list</button>
+          <button id="ed-del" class="btn danger">${ic('trash')}Borrar set list</button>
         </div>
-      </section>`;
+      </section></div>`;
     renderDirty();
     renderLoaded();
   }
 
   function problemsHtml(problems) {
     if (!problems) return '';
-    return problems.length ? `<ul class="problems">${problems.map(p => `<li>✗ ${esc(p)}</li>`).join('')}</ul>`
-      : '<p class="ok-text small">✓ Lista para tocar</p>';
+    return problems.length ? `<ul class="problems">${problems.map(p => `<li>${ic('alert')}<span>${esc(p)}</span></li>`).join('')}</ul>`
+      : `<p><span class="chip ok">${ic('check')}Lista para tocar</span></p>`;
   }
 
   function renderDirty() {
@@ -399,9 +444,11 @@ function viewSetlist(slug) {
 
   function renderLoaded() {
     const box = $('#ed-loaded');
-    if (!box || live.state?.slug !== slug) { if (box) box.innerHTML = ''; return; }
-    box.innerHTML = `<p class="note">Esta es la set list cargada en el show. Los cambios guardados se aplican al recargarla.
-      ${live.state.state === 'stopped' ? '<button id="ed-reload">Recargar en el show</button>' : '(se puede con la reproducción parada)'}</p>`;
+    if (!box) return;
+    if (live.state?.slug !== slug) { box.innerHTML = ''; return; }
+    box.innerHTML = `<div class="note">${ic('show')}<span>Es la set list cargada en el show. Los cambios guardados se aplican al recargarla.</span>
+      ${live.state.state === 'stopped' ? `<button id="ed-reload" class="btn sm">${ic('reload')}Recargar en el show</button>`
+        : '<span class="muted small">Se puede con la reproducción parada.</span>'}</div>`;
   }
 
   v.addEventListener('input', e => {
@@ -485,27 +532,31 @@ function viewSetlist(slug) {
 function viewLibrary() {
   const v = $('#view');
   v.innerHTML = `
-    <section>
-      <h2>Importar una canción</h2>
-      <form id="imp" class="stack">
-        <label>Archivos (WAV, FLAC, AIFF, MP3, ZIP, MIDI)
-          <input type="file" id="imp-files" multiple accept=".wav,.wave,.flac,.aif,.aiff,.mp3,.ogg,.zip,.mid,.midi"></label>
-        <label>o una carpeta <input type="file" id="imp-dir" webkitdirectory></label>
-        <label>Nombre de la canción <input id="imp-name" placeholder="(el del archivo o la carpeta)"></label>
-        <label>Si es un único archivo estéreo, qué es
-          <select id="imp-layout">
-            <option value="">Detectar por el nombre del archivo</option>
-            <option value="click-pista">click-pista: L = click, R = pista (el formato de la banda)</option>
-            <option value="foh">foh: pista estéreo, sin click</option>
-          </select></label>
-        <div class="row"><button class="primary" id="imp-go">Importar</button><span id="imp-status" class="small"></span></div>
-        <p class="muted small">${esc(info.conventions)}</p>
+    <div class="wrap"><section>
+      <h1 class="title">Importar canción</h1>
+      <form id="imp" class="panel">
+        <div class="pick">
+          <label class="btn">${ic('upload')}Archivos<input type="file" id="imp-files" class="vh" multiple accept=".wav,.wave,.flac,.aif,.aiff,.mp3,.ogg,.zip,.mid,.midi"></label>
+          <label class="btn ghost">${ic('folder')}Carpeta<input type="file" id="imp-dir" class="vh" webkitdirectory></label>
+        </div>
+        <div id="imp-picked" class="picked">WAV, FLAC, AIFF, MP3, ZIP o MIDI. Una canción por vez.</div>
+        <div class="grid2">
+          <label class="field"><span>Nombre de la canción</span><input id="imp-name" placeholder="El del archivo o la carpeta"></label>
+          <label class="field"><span>Si es un único archivo estéreo</span>
+            <select id="imp-layout">
+              <option value="">Detectar por el nombre del archivo</option>
+              <option value="click-pista">click-pista: L = click, R = pista (el de la banda)</option>
+              <option value="foh">foh: pista estéreo, sin click</option>
+            </select></label>
+        </div>
+        <div class="actions"><button class="btn primary" id="imp-go">${ic('upload')}Importar</button><span id="imp-status" class="status"></span></div>
+        <p class="fine">${esc(info.conventions)}</p>
       </form>
-      <h2>Biblioteca</h2>
+      <h2 class="title">Biblioteca <span id="lib-count" class="count"></span></h2>
       <div id="lib" class="muted">Cargando…</div>
-    </section>`;
+    </section></div>`;
 
-  const status = (html, cls = '') => { const s = $('#imp-status'); s.innerHTML = html; s.className = 'small ' + cls; };
+  const status = (html, cls = '') => { const s = $('#imp-status'); s.innerHTML = html; s.className = 'status ' + cls; };
   const chosen = () => [...($('#imp-dir').files.length ? $('#imp-dir').files : $('#imp-files').files)].filter(f => !f.name.startsWith('.'));
   let busy = false;
 
@@ -513,21 +564,30 @@ function viewLibrary() {
     const go = $('#imp-go');
     if (!go) return;
     go.disabled = busy || sounding();
-    if (!busy) status(sounding() ? 'Está sonando: el import se habilita con la reproducción parada.' : '', sounding() ? 'bad-text' : '');
+    if (!busy) status(sounding() ? `${ic('alert')}<span>Está sonando: el import se habilita con la reproducción parada.</span>` : '', sounding() ? 'bad' : '');
+  }
+
+  function showPicked() {
+    const files = chosen();
+    const mb = files.reduce((a, f) => a + f.size, 0) / 1048576;
+    $('#imp-picked').innerHTML = files.length
+      ? `<strong>${plural(files.length, 'archivo', 'archivos')}</strong> · ${mb.toFixed(1)} MB · ${esc(files.slice(0, 4).map(f => f.name).join(', '))}${files.length > 4 ? '…' : ''}`
+      : 'WAV, FLAC, AIFF, MP3, ZIP o MIDI. Una canción por vez.';
   }
 
   async function load() {
     let songs;
     try { songs = await api('GET', '/api/songs'); } catch (e) { $('#lib').textContent = e.message; return; }
-    const yes = b => b ? 'sí' : '—';
+    $('#lib-count').textContent = pad2(songs.length);
+    const yes = b => b ? `<span class="yes">${ic('check')}</span>` : '<span class="no">—</span>';
     $('#lib').innerHTML = songs.length ? `<div class="table-wrap"><table class="songs">
       <thead><tr><th>Canción</th><th>Duración</th><th>Pista</th><th>Click</th><th>Guía</th><th>MIDI</th><th>En set lists</th><th></th></tr></thead>
       <tbody>${songs.map(s => `<tr>
-        <td><strong>${esc(s.name)}</strong>${s.warnings.map(w => `<div class="warn small">⚠ ${esc(w)}</div>`).join('')}</td>
-        <td>${mmss(s.duration)}</td><td>${esc(s.foh || '—')}</td><td>${yes(s.click)}</td><td>${yes(s.guia)}</td><td>${yes(s.midi)}</td>
-        <td class="small">${s.used_in.map(esc).join(', ') || '<span class="muted">—</span>'}</td>
-        <td><button data-del="${esc(s.slug)}" data-name="${esc(s.name)}" class="danger small-btn" ${s.used_in.length ? 'disabled title="Está en una set list"' : ''}>Borrar</button></td>
-      </tr>`).join('')}</tbody></table></div>` : '<p>La biblioteca está vacía.</p>';
+        <td><strong>${esc(s.name)}</strong>${s.warnings.map(w => `<div class="warn">${ic('alert')}<span>${esc(w)}</span></div>`).join('')}</td>
+        <td class="dur">${mmss(s.duration)}</td><td>${esc(s.foh || '—')}</td><td>${yes(s.click)}</td><td>${yes(s.guia)}</td><td>${yes(s.midi)}</td>
+        <td class="small">${s.used_in.map(esc).join(', ') || '<span class="no">—</span>'}</td>
+        <td class="acts"><button data-del="${esc(s.slug)}" data-name="${esc(s.name)}" class="btn icon sm danger" title="${s.used_in.length ? 'Está en una set list' : 'Borrar de la biblioteca'}" ${s.used_in.length ? 'disabled' : ''}>${ic('trash')}</button></td>
+      </tr>`).join('')}</tbody></table></div>` : '<p class="muted">La biblioteca está vacía.</p>';
   }
 
   v.addEventListener('change', e => {
@@ -539,6 +599,7 @@ function viewLibrary() {
       $('#imp-dir').value = '';
       if (e.target.files.length === 1) $('#imp-name').value = e.target.files[0].name.replace(/\.[^.]+$/, '');
     }
+    if (e.target.type === 'file') showPicked();
   });
 
   v.addEventListener('submit', async e => {
@@ -551,15 +612,16 @@ function viewLibrary() {
     try {
       await api('DELETE', '/api/incoming');
       for (const [i, f] of files.entries()) {
-        await upload(f, p => status(`Subiendo ${i + 1}/${files.length}: ${esc(f.name)} — ${Math.round(100 * p)}%`));
+        await upload(f, p => status(`<span>Subiendo ${i + 1}/${files.length}: ${esc(f.name)} — ${Math.round(100 * p)}%</span>`));
       }
-      status('Importando… convierte y escribe despacio para no trabar al iRig: ~1 min por canción.');
+      status('<span>Importando… convierte y escribe despacio para no trabar al iRig: ~1 min por canción.</span>');
       const song = await api('POST', '/api/import', {name: name || null, layout: $('#imp-layout').value || null});
-      status(`✓ Importada: ${esc(song.name)} (${mmss(song.duration)})` + song.warnings.map(w => `<br>⚠ ${esc(w)}`).join(''), 'ok-text');
+      status(`${ic('check')}<span>Importada: ${esc(song.name)} (${mmss(song.duration)})${song.warnings.map(w => `<br>${esc(w)}`).join('')}</span>`, 'ok');
       $('#imp').reset();
+      showPicked();
       load();
     } catch (err) {
-      status('✗ ' + esc(err.message), 'bad-text');
+      status(`${ic('alert')}<span>${esc(err.message)}</span>`, 'bad');
     } finally {
       busy = false;
       $('#imp-go').disabled = sounding();
@@ -583,18 +645,18 @@ function viewLibrary() {
 function viewControls() {
   const v = $('#view');
   v.innerHTML = `
-    <section>
-      <h2>Controles MIDI</h2>
-      <p id="ct-port" class="muted">Cargando…</p>
+    <div class="wrap"><section>
+      <h1 class="title">Controles MIDI</h1>
+      <div id="ct-port" class="port">Cargando…</div>
       <div class="table-wrap"><table class="controls">
         <thead><tr><th>Acción</th><th>Controles asignados</th><th></th></tr></thead>
         <tbody id="ct-rows"></tbody>
       </table></div>
-      <p id="ct-last" class="note">Pisá un footswitch para ver qué manda.</p>
-      <p class="muted small">Aprender: tocá el botón y pisá el footswitch dentro de los 15 s. Un footswitch dispara una sola
+      <div id="ct-last" class="note last">${ic('controls')}<span>Pisá un footswitch para ver qué manda.</span></div>
+      <p class="fine">Aprender: tocá el botón y pisá el footswitch dentro de los 15 s. Un footswitch dispara una sola
         acción; una acción puede tener varios (por ejemplo, el mismo footswitch en modo normal y en modo stomp).
         El pedal de expresión se ignora. Anterior y Siguiente funcionan solo con la reproducción parada.</p>
-    </section>`;
+    </section></div>`;
   let data = null, learning = null;
 
   async function load() {
@@ -605,20 +667,20 @@ function viewControls() {
   function render() {
     if (!data) return;
     const locked = learning || sounding();
-    $('#ct-port').innerHTML = data.port ? `Escuchando <strong>${esc(data.port)}</strong>`
-      : '<span class="bad-text">No hay pedalera MIDI conectada</span>';
+    $('#ct-port').innerHTML = data.port
+      ? `<span class="chip ok">${ic('check')}Conectado</span><span>Escuchando <strong>${esc(data.port)}</strong></span>`
+      : `<span class="chip bad">${ic('alert')}Sin pedalera</span><span>No hay una pedalera MIDI conectada</span>`;
     $('#ct-rows').innerHTML = Object.entries(data.actions).map(([a, name]) => {
       const keys = Object.keys(data.map).filter(k => data.map[k] === a);
       return `<tr><td><strong>${esc(name)}</strong></td>
-        <td>${keys.map(k => `<div>${esc(data.labels[k])}</div>`).join('') || '<span class="muted">—</span>'}</td>
-        <td class="acts"><button data-learn="${a}" class="${learning === a ? 'primary' : ''}" ${locked ? 'disabled' : ''}>${learning === a ? 'Pisá el footswitch…' : 'Aprender'}</button>
-          <button data-forget="${a}" ${keys.length && !locked ? '' : 'disabled'}>Quitar</button></td></tr>`;
+        <td>${keys.map(k => `<div>${esc(data.labels[k])}</div>`).join('') || '<span class="no">—</span>'}</td>
+        <td class="acts"><button data-learn="${a}" class="btn sm ${learning === a ? 'primary' : ''}" ${locked ? 'disabled' : ''}>${learning === a ? 'Pisá el footswitch…' : 'Aprender'}</button><button data-forget="${a}" class="btn icon sm danger" title="Quitar los controles" ${keys.length && !locked ? '' : 'disabled'}>${ic('x')}</button></td></tr>`;
     }).join('');
     const l = data.last;
     $('#ct-last').innerHTML = l
-      ? `Última pisada: <strong>${esc(l.label)}</strong> → ${l.learned ? 'aprendida' : l.action ? esc(data.actions[l.action]) : '<span class="muted">sin acción</span>'}
-         <span class="muted small">(hace ${l.ago < 60 ? Math.round(l.ago) + ' s' : mmss(l.ago)})</span>`
-      : 'Pisá un footswitch para ver qué manda.';
+      ? `${ic('controls')}<span>Última pisada: <strong>${esc(l.label)}</strong></span>${ic('arrow')}<span>${l.learned ? 'aprendida' : l.action ? esc(data.actions[l.action]) : '<span class="muted">sin acción</span>'}</span>
+         <span class="muted small">hace ${l.ago < 60 ? Math.round(l.ago) + ' s' : mmss(l.ago)}</span>`
+      : `${ic('controls')}<span>Pisá un footswitch para ver qué manda.</span>`;
   }
 
   v.addEventListener('click', async e => {
@@ -628,7 +690,7 @@ function viewControls() {
       learning = b.dataset.learn; render();
       try {
         const r = await api('POST', '/api/learn', {action: learning});
-        toast(`${data.actions[learning]} ← ${r.label}`);
+        toast(`${data.actions[learning]}: ${r.label}`);
       } catch (err) { toast(err.message, 'bad'); }
       learning = null;
       load();
@@ -648,7 +710,7 @@ function viewControls() {
 (async function start() {
   for (;;) {
     try { info = await api('GET', '/api/info'); break; }
-    catch { $('#view').innerHTML = '<section class="muted">Conectando con Necrotracks…</section>'; await new Promise(r => setTimeout(r, 2000)); }
+    catch { $('#view').innerHTML = '<div class="wrap"><section class="empty"><p>Conectando con Necrotracks…</p></section></div>'; await new Promise(r => setTimeout(r, 2000)); }
   }
   connect();
   renderConn();

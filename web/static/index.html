@@ -3,24 +3,94 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#101114">
+<meta name="theme-color" content="#09090b">
+<meta name="format-detection" content="telephone=no">
+<!-- Instalable en la pantalla de inicio del iPhone (Compartir → Agregar a inicio) -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Necrotracks">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/static/icons/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/static/icons/icon-180.png">
 <title>Necrotracks</title>
 <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <!-- Emblema: el de Necrópolis redibujado (una mitad, espejada) -->
+    <g id="emb-half">
+      <path fill="currentColor" d="M72,0 L154,122 L106,108 C80,190 60,248 60,304 C60,362 86,410 136,436 L150,446 H238 V496 H190 V690 L200,724 L190,758 H124 L112,724 L126,690 V474 L112,470 C52,446 12,392 8,306 C4,206 40,96 72,0 Z"/>
+      <path fill="none" style="stroke:var(--accent)" stroke-width="14" d="M118,124 C92,204 76,258 76,304 C76,366 108,410 158,428 C188,436 213,437 238,437"/>
+      <path fill="none" style="stroke:var(--accent)" stroke-width="11" stroke-linejoin="miter" d="M96,478 C106,502 108,522 108,560 V692 L94,730"/>
+    </g>
+  </defs>
+  <symbol id="emblem" viewBox="0 0 470 766">
+    <use href="#emb-half"/><use href="#emb-half" transform="translate(470,0) scale(-1,1)"/>
+  </symbol>
+  <!-- ΠΣCRΘTRΛCKS: letras angulares, con la sustitución griega del logo de la banda -->
+  <symbol id="wordmark" viewBox="0 0 844 100">
+    <g fill="none" stroke="currentColor" stroke-width="14" stroke-linejoin="miter">
+      <path d="M7,93 V7 M57,93 V7 M0,7 H64"/>
+      <path transform="translate(78,0)" d="M60,7 H7 L33,50 L7,93 H60"/>
+      <path transform="translate(156,0)" d="M60,7 H20 L7,20 V80 L20,93 H60"/>
+      <path transform="translate(234,0)" d="M7,93 V7 H46 L57,18 V39 L46,50 H7 M30,50 L57,93"/>
+      <g transform="translate(312,0)"><path d="M20,7 H44 L57,20 V80 L44,93 H20 L7,80 V20 Z"/><path d="M18,56 L24,44 H46 L40,56 Z" fill="currentColor" stroke="none"/></g>
+      <g style="stroke:var(--accent)">
+        <path transform="translate(390,0)" d="M0,7 H64 M32,7 V93"/>
+        <path transform="translate(468,0)" d="M7,93 V7 H46 L57,18 V39 L46,50 H7 M30,50 L57,93"/>
+        <path transform="translate(546,0)" d="M5,93 L28,7 H36 L59,93"/>
+        <path transform="translate(624,0)" d="M60,7 H20 L7,20 V80 L20,93 H60"/>
+        <path transform="translate(702,0)" d="M7,7 V93 M57,7 L17,50 L57,93"/>
+        <path transform="translate(780,0)" d="M60,7 H20 L7,20 V37 L20,50 H44 L57,63 V80 L44,93 H4"/>
+      </g>
+    </g>
+  </symbol>
+  <!-- Íconos: 24×24. Transporte rellenos; el resto, trazo recto -->
+  <symbol id="i-play" viewBox="0 0 24 24"><path fill="currentColor" d="M7 4.5v15L19.5 12z"/></symbol>
+  <symbol id="i-pause" viewBox="0 0 24 24"><path fill="currentColor" d="M6 4.5h4.2v15H6zM13.8 4.5H18v15h-4.2z"/></symbol>
+  <symbol id="i-stop" viewBox="0 0 24 24"><path fill="currentColor" d="M5.5 5.5h13v13h-13z"/></symbol>
+  <symbol id="i-prev" viewBox="0 0 24 24"><path fill="currentColor" d="M5 5h2.6v14H5zM20 5v14L9 12z"/></symbol>
+  <symbol id="i-next" viewBox="0 0 24 24"><path fill="currentColor" d="M16.4 5H19v14h-2.6zM4 5v14l11-7z"/></symbol>
+  <g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square" stroke-linejoin="miter">
+    <symbol id="i-show" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" d="M4 9v6M8 5v14M12 2v20M16 7v10M20 10v4"/></symbol>
+    <symbol id="i-list" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square" d="M9 6h12M9 12h12M9 18h12M4 6h1M4 12h1M4 18h1"/></symbol>
+    <symbol id="i-library" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square" d="M4 4v16M8.5 4v16M13 4v16M16.5 5l4 14.5"/></symbol>
+    <symbol id="i-controls" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square" d="M5 21v-6M5 10V3M12 21v-8M12 8V3M19 21v-4M19 12V3M2 15h6M9 8h6M16 17h6"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="square" d="M4.5 12.5l4.5 4.5L19.5 6.5"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="square" d="M6 6l12 12M18 6L6 18"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="miter" d="M12 3L2 20.5h20z"/><path fill="none" stroke="currentColor" stroke-width="2.2" d="M12 9.5v5M12 17v1.5"/></symbol>
+    <symbol id="i-up" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="square" d="M6 15l6-6 6 6"/></symbol>
+    <symbol id="i-down" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="square" d="M6 9l6 6 6-6"/></symbol>
+    <symbol id="i-back" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="square" d="M15 5l-7 7 7 7"/></symbol>
+    <symbol id="i-arrow" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square" d="M4 12h15M13 6l6 6-6 6"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="square" d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-upload" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square" d="M12 15V4M7 9l5-5 5 5M4 20h16"/></symbol>
+    <symbol id="i-folder" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="miter" d="M3 5h6l2 2.5h10V19H3z"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square" d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v5M14 11v5"/></symbol>
+    <symbol id="i-reload" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="square" d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3M20 4v4.5h-4.5"/></symbol>
+  </g>
+</svg>
+
 <header id="bar">
-  <strong class="brand">Necrotracks</strong>
-  <nav>
-    <a href="#show">Show</a>
-    <a href="#setlists">Set lists</a>
-    <a href="#biblioteca">Biblioteca</a>
-    <a href="#controles">Controles</a>
-  </nav>
-  <span id="conn" class="conn">…</span>
+  <div class="wrap">
+    <a class="brand" href="#show" aria-label="Necrotracks">
+      <svg class="emblem" aria-hidden="true"><use href="#emblem"/></svg>
+      <svg class="wordmark" aria-hidden="true"><use href="#wordmark"/></svg>
+    </a>
+    <nav id="tabs">
+      <a href="#show"><svg class="ic" aria-hidden="true"><use href="#i-show"/></svg><span>Show</span></a>
+      <a href="#setlists"><svg class="ic" aria-hidden="true"><use href="#i-list"/></svg><span>Set lists</span></a>
+      <a href="#biblioteca"><svg class="ic" aria-hidden="true"><use href="#i-library"/></svg><span>Biblioteca</span></a>
+      <a href="#controles"><svg class="ic" aria-hidden="true"><use href="#i-controls"/></svg><span>Controles</span></a>
+    </nav>
+    <span id="conn" class="conn">…</span>
+  </div>
 </header>
 <div id="banner" hidden></div>
-<div id="toast" hidden></div>
 <main id="view"></main>
+<div id="toast" hidden></div>
 <script src="/static/app.js"></script>
 </body>
 </html>

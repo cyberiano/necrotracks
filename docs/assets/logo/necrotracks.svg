@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 1180 180" width="1180" height="180">
+  <!-- Logo de Necrotracks: emblema de Necrópolis redibujado + ΠΣCRΘTRΛCKS. Hueso #ecebe7, rojo #c1121f. -->
+  <defs>
+    <g id="half">
+      <path fill="#ecebe7" d="M72,0 L154,122 L106,108 C80,190 60,248 60,304 C60,362 86,410 136,436 L150,446 H238 V496 H190 V690 L200,724 L190,758 H124 L112,724 L126,690 V474 L112,470 C52,446 12,392 8,306 C4,206 40,96 72,0 Z"/>
+      <path fill="none" stroke="#c1121f" stroke-width="14" d="M118,124 C92,204 76,258 76,304 C76,366 108,410 158,428 C188,436 213,437 238,437"/>
+      <path fill="none" stroke="#c1121f" stroke-width="11" d="M96,478 C106,502 108,522 108,560 V692 L94,730"/>
+    </g>
+  </defs>
+  <g transform="translate(20,10) scale(0.209)">
+    <use xlink:href="#half"/>
+    <use xlink:href="#half" transform="translate(470,0) scale(-1,1)"/>
+  </g>
+  <g transform="translate(160,30) scale(1.2)" fill="none" stroke="#ecebe7" stroke-width="14" stroke-linejoin="miter">
+    <path d="M7,93 V7 M57,93 V7 M0,7 H64"/>
+    <path transform="translate(78,0)" d="M60,7 H7 L33,50 L7,93 H60"/>
+    <path transform="translate(156,0)" d="M60,7 H20 L7,20 V80 L20,93 H60"/>
+    <path transform="translate(234,0)" d="M7,93 V7 H46 L57,18 V39 L46,50 H7 M30,50 L57,93"/>
+    <g transform="translate(312,0)"><path d="M20,7 H44 L57,20 V80 L44,93 H20 L7,80 V20 Z"/><path d="M18,56 L24,44 H46 L40,56 Z" fill="#ecebe7" stroke="none"/></g>
+    <g stroke="#c1121f">
+      <path transform="translate(390,0)" d="M0,7 H64 M32,7 V93"/>
+      <path transform="translate(468,0)" d="M7,93 V7 H46 L57,18 V39 L46,50 H7 M30,50 L57,93"/>
+      <path transform="translate(546,0)" d="M5,93 L28,7 H36 L59,93"/>
+      <path transform="translate(624,0)" d="M60,7 H20 L7,20 V80 L20,93 H60"/>
+      <path transform="translate(702,0)" d="M7,7 V93 M57,7 L17,50 L57,93"/>
+      <path transform="translate(780,0)" d="M60,7 H20 L7,20 V37 L20,50 H44 L57,63 V80 L44,93 H4"/>
+    </g>
+  </g>
+</svg>

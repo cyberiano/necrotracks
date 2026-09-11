@@ -1,0 +1,16 @@
+{
+  "name": "Necrotracks",
+  "short_name": "Necrotracks",
+  "description": "Reproductor de pistas para vivo",
+  "lang": "es",
+  "start_url": "/#show",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#09090b",
+  "theme_color": "#09090b",
+  "icons": [
+    {"src": "/static/icons/icon-192.png", "sizes": "192x192", "type": "image/png"},
+    {"src": "/static/icons/icon-512.png", "sizes": "512x512", "type": "image/png"},
+    {"src": "/static/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}
+  ]
+}

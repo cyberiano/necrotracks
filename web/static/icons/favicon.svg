@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 1024 1024">
+  <defs>
+    <g id="half">
+      <path fill="#ecebe7" d="M72,0 L154,122 L106,108 C80,190 60,248 60,304 C60,362 86,410 136,436 L150,446 H238 V496 H190 V690 L200,724 L190,758 H124 L112,724 L126,690 V474 L112,470 C52,446 12,392 8,306 C4,206 40,96 72,0 Z"/>
+      <path fill="none" stroke="#c1121f" stroke-width="16" d="M118,124 C92,204 76,258 76,304 C76,366 108,410 158,428 C188,436 213,437 238,437"/>
+    </g>
+  </defs>
+  <rect width="1024" height="1024" rx="200" fill="#0b0b0d"/>
+  <g transform="translate(512,512) scale(1.12) translate(-235,-379)">
+    <use xlink:href="#half"/>
+    <use xlink:href="#half" transform="translate(470,0) scale(-1,1)"/>
+  </g>
+</svg>

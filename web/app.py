@@ -350,3 +350,8 @@ async def delete_setlist(slug: str):
 @app.get("/")
 def index():
     return FileResponse(STATIC / "index.html")
+
+
+@app.get("/manifest.webmanifest")
+def manifest():  # para instalarla como app; el tipo MIME no lo adivina StaticFiles
+    return FileResponse(STATIC / "manifest.webmanifest", media_type="application/manifest+json")
