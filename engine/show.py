@@ -18,7 +18,8 @@ from . import store
 
 
 class Show:
-    def __init__(self, player, setlist, songs, path_for, samplerate=48000, clock=time.monotonic, on_change=None):
+    def __init__(self, player, setlist, songs, path_for, samplerate=48000, clock=time.monotonic, on_change=None,
+                 index=0):
         self.player = player
         self.setlist = setlist
         self.items = setlist["items"]
@@ -28,7 +29,7 @@ class Show:
         self.clock = clock
         self.on_change = on_change  # recibe un snapshot en cada cambio de estado o de canción
         self.state = "stopped"
-        self.index = 0
+        self.index = index if 0 <= index < len(self.items) else 0
         self.wait_until = None
         self._q = queue.SimpleQueue()
         self._lock = threading.RLock()

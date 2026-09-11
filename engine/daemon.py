@@ -15,6 +15,7 @@ ningún cliente: si la web se cae, el show sigue.
 import asyncio
 import json
 import logging
+import os
 
 from . import library, profiles, setlists, store
 from .show import Show
@@ -33,6 +34,11 @@ class EngineError(Exception):
 
 def config_path():
     return store.DATA / "config.json"
+
+
+def cursor_path():
+    # En RAM: se escribe en cada cambio y sobrevive a un reinicio del servicio, no de la Pi.
+    return store.RUN / "cursor.json"
 
 
 def load_config():
@@ -63,7 +69,9 @@ class Engine:
         if self.show:
             self.show.send("quit")
         songs = {item["song"]: library.get_song(item["song"]) for item in setlist["items"]}
-        self.show = Show(self.player, setlist, songs, library.render_path, on_change=self._on_change)
+        cursor = store.read_json(cursor_path(), {}) or {}
+        index = cursor.get("index", 0) if cursor.get("setlist") == setlist["slug"] else 0
+        self.show = Show(self.player, setlist, songs, library.render_path, on_change=self._on_change, index=index)
         self.show.start()
         if self.config.get("setlist") != setlist["slug"]:
             self.config["setlist"] = setlist["slug"]
@@ -86,6 +94,8 @@ class Engine:
 
     # Los cambios llegan desde el hilo del show: se pasan al loop de asyncio.
     def _on_change(self, snapshot):
+        if self.show:
+            store.write_json(cursor_path(), {"setlist": self.show.setlist["slug"], "index": snapshot["index"]})
         if self.loop:
             self.loop.call_soon_threadsafe(self._broadcast, snapshot)
 
@@ -163,6 +173,7 @@ def main():
     config = load_config()
     profile = profiles.get(config["profile"])
     player = Player(profile["device"], profile["matrix"])  # sin el device, sale y systemd reintenta
+    player.on_device_lost = lambda: os._exit(3)  # systemd lo reinicia; al volver, recupera la set list y el cursor
     log.info("audio abierto: perfil %s", config["profile"])
     engine = Engine(player, config)
     if config["setlist"]:

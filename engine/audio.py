@@ -8,6 +8,7 @@ import logging
 import os
 import queue
 import threading
+import time
 
 import numpy as np
 import sounddevice as sd
@@ -20,6 +21,7 @@ RENDER_CHANNELS = 4  # FOH L, FOH R, Click, Guía
 BLOCK = 1024
 FADE = int(0.010 * SAMPLERATE)
 PREFILL_BLOCKS = int(0.5 * SAMPLERATE / BLOCK)  # buffer mínimo antes de arrancar
+WATCHDOG_TIMEOUT = 2.0  # segundos sin poder escribir al device = device perdido
 
 
 def _set_realtime(priority=70):
@@ -80,6 +82,10 @@ class Player:
         self.underflows = 0  # xruns reportados por ALSA
         self.starved = 0  # bloques en que el reader no llegó a tiempo
         self.on_end = None  # callback al terminar una canción (corre en el hilo de audio: que sea rápido)
+        self.on_device_lost = None  # sin device no hay forma de seguir: el engine sale y systemd lo reinicia
+        self.device_lost = False
+        self._closing = False
+        self._heartbeat = time.monotonic()
         self._cmds = queue.SimpleQueue()
         self.stream = sd.OutputStream(
             device=find_device(device_name), samplerate=SAMPLERATE, channels=self.outputs,
@@ -88,6 +94,7 @@ class Player:
         self.stream.start()
         self._thread = threading.Thread(target=self._audio_loop, daemon=True, name="audio")
         self._thread.start()
+        threading.Thread(target=self._watchdog, daemon=True, name="watchdog").start()
 
     def play(self, path):
         q = queue.Queue(maxsize=self.buffer_blocks)
@@ -105,10 +112,27 @@ class Player:
         self._cmds.put(("resume",))
 
     def close(self):
+        self._closing = True
         self._cmds.put(("quit",))
         self._thread.join(timeout=2)
         self.stream.stop()
         self.stream.close()
+
+    def _watchdog(self):
+        # Al desenchufar el iRig, la escritura puede quedar bloqueada para siempre sin error:
+        # sin este vigía el engine se quedaría "tocando" en silencio.
+        while not self.device_lost and not self._closing:
+            time.sleep(0.5)
+            if not self._closing and time.monotonic() - self._heartbeat > WATCHDOG_TIMEOUT:
+                self._lost(f"más de {WATCHDOG_TIMEOUT:g} s sin poder escribir")
+
+    def _lost(self, why):
+        if self.device_lost:
+            return
+        self.device_lost = True
+        log.error("Device de audio perdido: %s", why)
+        if self.on_device_lost:
+            self.on_device_lost()
 
     def _audio_loop(self):
         _set_realtime()
@@ -177,5 +201,11 @@ class Player:
                     paused = True
             self.paused = paused
 
-            if self.stream.write(out):
+            try:
+                underflow = self.stream.write(out)
+            except Exception as e:  # p. ej. PortAudioError al desconectarse el device
+                self._lost(f"{e.__class__.__name__}: {e}")
+                return
+            if underflow:
                 self.underflows += 1
+            self._heartbeat = time.monotonic()

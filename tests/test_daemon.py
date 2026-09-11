@@ -89,3 +89,14 @@ def test_set_list_con_problemas_no_se_carga(setlist):
     engine = daemon.Engine(FakePlayer(), dict(daemon.DEFAULT_CONFIG))
     with pytest.raises(daemon.EngineError, match="problemas"):
         engine.load("ensayo")
+
+
+def test_recupera_el_cursor_tras_un_reinicio(setlist):
+    engine = daemon.Engine(FakePlayer(), dict(daemon.DEFAULT_CONFIG))
+    engine.load("ensayo")
+    engine.show.process("next")  # cursor en la 2
+    engine.show.send("quit")
+    again = daemon.Engine(FakePlayer(), dict(daemon.DEFAULT_CONFIG))  # como tras un reinicio del servicio
+    again.load("ensayo")
+    assert (again.show.index, again.show.state) == (1, "stopped")
+    again.show.send("quit")
