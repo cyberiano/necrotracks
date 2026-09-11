@@ -113,10 +113,23 @@ def test_siguiente_y_anterior():
     show.process("prev")
     show.process("play")
     assert p.calls == [("play", "s1")]
-    show.process("next")  # sonando: salta y sigue sonando
-    assert (show.state, show.index) == ("playing", 2) and p.calls[-1] == ("play", "s2")
+    show.process("next")  # sonando: no hace nada
     show.process("goto", 0)
-    assert p.calls[-1] == ("play", "s0")
+    assert (show.state, show.index) == ("playing", 1) and p.calls == [("play", "s1")]
+    show.process("pause")
+    show.process("prev")  # en pausa: tampoco
+    assert (show.state, show.index) == ("paused", 1)
+    show.process("stop")
+    show.process("goto", 0)
+    assert (show.state, show.index) == ("stopped", 0)
+
+
+def test_siguiente_durante_la_espera_la_cancela():
+    show, p, _ = make(["wait", "stop", "stop"], waits={0: 5.0})
+    show.process("play")
+    show.process("ended")
+    show.process("next")
+    assert (show.state, show.index) == ("stopped", 2) and p.calls == [("play", "s0")]
 
 
 def test_pausa():

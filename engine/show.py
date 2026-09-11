@@ -138,14 +138,12 @@ class Show:
         self._set("stopped")  # en waiting: cancela la espera, el cursor queda en la siguiente
 
     def _jump(self, index):
-        """Sonando: salta y sigue sonando. Parado o esperando: solo mueve el cursor."""
-        if index is None or not 0 <= index < len(self.items):
+        """Mueve el cursor solo con la reproducción parada (o durante una espera, que se cancela).
+        Sonando o en pausa no hace nada: una pisada accidental en vivo no puede cortar la canción."""
+        if index is None or not 0 <= index < len(self.items) or self.state in ("playing", "paused"):
             return
-        if self.state in ("playing", "paused"):
-            self._start(index)
-        else:
-            self.index = index
-            self._set("stopped")
+        self.index = index
+        self._set("stopped")
 
     def _ended(self):
         if self.state != "playing":

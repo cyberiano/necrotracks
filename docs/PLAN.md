@@ -133,7 +133,8 @@ Setlists y bloques en JSON. Todo operable por CLI antes de que exista la web.
 - Máquina de estados del show (`engine/show.py`): play, pausa, stop, siguiente, anterior, ir a. Un solo
   hilo; el fin de canción llega del hilo de audio como evento.
 - Pausa y reanudar en el Player (con fades).
-- **A confirmar con Cristian**: Siguiente/Anterior **mientras suena** salta a esa canción y sigue sonando.
+- **Decidido con Cristian**: Siguiente/Anterior/Ir a **solo con la reproducción parada** (o durante una
+  espera, que se cancela). Sonando o en pausa no hacen nada: solo Stop corta una canción.
 
 ### Fase 3 — Web UI
 Sin build step. Config (biblioteca, setlists, perfiles, import) + Show Mode + estado por WebSocket.
