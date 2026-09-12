@@ -248,6 +248,9 @@ Degrada bien: si se corta el WS, muestra "desconectado" y no bloquea nada.
   sin querer en el escenario deja la pantalla corrida. Y **instalada en el inicio del iPhone no hay forma de
   recargar** (no hay barra ni tirar hacia abajo): va un botón en la barra, más un refresco automático al volver
   a la app (por ejemplo, después de subir una canción desde la Mac).
+- **Marca de visuales** (2026-09-11, pedido de Cristian): ícono de video en la lista del Show, en la canción
+  del cursor (chip "Video" junto al estado) y en la biblioteca (en el celular, dentro del resumen de canales).
+  `/api/setlists/SLUG` manda ahora la altura del video de cada canción; antes solo nombre y duración.
 - **Observaciones por canción** (2026-09-11, pedido de Cristian): lo que la banda prepara para el show
   ("arranca Juan solo", "sample al final"). Van **en la set list, no en la canción de la biblioteca**
   (decisión de Cristian: cambian de show en show), una línea de hasta 200 caracteres, y se ven en letra

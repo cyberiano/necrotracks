@@ -194,7 +194,8 @@ function viewShow() {
             <span id="sh-setlist" class="kicker"></span>
             <button id="sh-change" class="btn ghost sm">${ic('list')}Cambiar</button>
           </div>
-          <div class="sh-status"><span id="sh-state" class="state"></span><span id="sh-block" class="block"></span><span id="sh-num" class="num"></span></div>
+          <div class="sh-status"><span id="sh-state" class="state"></span><span id="sh-block" class="block"></span>
+            <span id="sh-video" class="chip vid" hidden>${ic('video')}Video</span><span id="sh-num" class="num"></span></div>
           <h1 id="sh-song" class="sh-title"></h1>
           <p id="sh-note" class="sh-note" hidden></p>
           <div class="meter"><div id="sh-bar" class="meter-fill"></div></div>
@@ -251,6 +252,7 @@ function viewShow() {
       if (it.block !== block) { block = it.block; if (block) head = `<li class="blk-head">${esc(block)}</li>`; }
       return `${head}<li data-i="${i}">
         <span class="n">${pad2(i + 1)}</span><span class="t">${esc(song ? song.name : it.song)}</span>
+        ${song && song.video ? `<span class="vid" title="Tiene video">${ic('video')}</span>` : ''}
         <span class="d">${song ? mmss(song.duration) : ''}</span></li>`;
     }).join('');
   }
@@ -298,6 +300,8 @@ function viewShow() {
     badge.textContent = STATE_LABEL[s.state];
     badge.className = 'state ' + s.state;
     $('#sh-block').textContent = s.block || '';
+    // Si la canción que está en el cursor tiene visuales, se avisa acá y con el ícono en la lista
+    $('#sh-video').hidden = !(item && detail && detail.songs[item.song] && detail.songs[item.song].video);
     $('#sh-num').textContent = `${pad2(s.index + 1)} / ${pad2(s.count)}`;
     $('#sh-song').textContent = s.song || '—';
     const note = $('#sh-note');  // lo que la banda preparó para esta canción, en letra chica
@@ -770,8 +774,11 @@ function viewLibrary() {
   let songs = [], renaming = null;  // renaming: slug de la canción que se está renombrando
 
   // En el celular las columnas no entran: los canales van resumidos en una línea (antes se escondían)
-  const detalle = s => [s.foh ? `Pista ${s.foh}` : null, s.click ? 'Click' : null, s.guia ? 'Guía' : null,
-    s.midi ? 'MIDI' : null, s.video ? `Video ${s.video.height}p` : null].filter(Boolean).join(' · ') || 'Sin canales';
+  const detalle = s => {
+    const partes = [s.foh ? `Pista ${esc(s.foh)}` : null, s.click ? 'Click' : null, s.guia ? 'Guía' : null,
+      s.midi ? 'MIDI' : null].filter(Boolean).join(' · ') || 'Sin canales';
+    return s.video ? `${partes} · <span class="vid">${ic('video')}Video ${s.video.height}p</span>` : partes;
+  };
 
   async function load() {
     try { songs = await api('GET', '/api/songs'); } catch (e) { $('#lib').textContent = e.message; return; }
@@ -791,10 +798,10 @@ function viewLibrary() {
       <tbody>${songs.map(s => `<tr>
         <td>${nameCell(s)}</td>
         <td class="dur">${mmss(s.duration)}</td><td>${esc(s.foh || '—')}</td><td>${yes(s.click)}</td><td>${yes(s.guia)}</td><td>${yes(s.midi)}</td>
-        <td>${s.video ? `<span class="yes">${s.video.height}p</span>` : '<span class="no">—</span>'}</td>
+        <td>${s.video ? `<span class="vid">${ic('video')}${s.video.height}p</span>` : '<span class="no">—</span>'}</td>
         <td class="small">${s.used_in.map(esc).join(', ') || '<span class="no">—</span>'}</td>
         <td class="acts"><button data-rn="${esc(s.slug)}" class="btn icon sm" title="Cambiar el nombre">${ic('edit')}</button><button data-del="${esc(s.slug)}" data-name="${esc(s.name)}" class="btn icon sm danger" title="${s.used_in.length ? 'Está en una set list' : 'Borrar de la biblioteca'}" ${s.used_in.length ? 'disabled' : ''}>${ic('trash')}</button></td>
-        <td class="det">${esc(detalle(s))}</td>
+        <td class="det">${detalle(s)}</td>
       </tr>`).join('')}</tbody></table></div>` : '<p class="muted">La biblioteca está vacía.</p>';
     $('.rn')?.focus();
   }

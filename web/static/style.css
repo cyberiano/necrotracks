@@ -200,6 +200,12 @@ td.acts .btn + .btn { margin-left: 4px; }
 .sh-list .n { width: 20px; font: 12px var(--mono); color: var(--faint); }
 .sh-list .t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sh-list .d { font: 12px var(--mono); color: var(--faint); }
+/* Marca de visuales: en la lista del show, en la canción que está en el cursor y en la biblioteca */
+.vid { display: inline-flex; align-items: center; gap: 5px; flex: none; color: var(--accent-hi); }
+.vid .ic { width: 15px; height: 15px; }
+.sh-list li.cur .vid { color: #fff; }
+.chip.vid { color: var(--accent-hi); border-color: rgba(193, 18, 31, .5); }
+.chip.vid .ic { width: 13px; height: 13px; margin-top: -1px; }
 .sh-list li.cur { background: linear-gradient(90deg, rgba(193, 18, 31, .24), rgba(193, 18, 31, 0) 75%); box-shadow: inset 3px 0 0 var(--accent); }
 .sh-list li.cur .t { color: #fff; font-weight: 600; }
 .sh-list li.blk-head { padding: 14px 14px 4px; cursor: default; border-bottom: 0; font: 700 13px/1 var(--display);

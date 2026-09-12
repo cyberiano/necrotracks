@@ -594,8 +594,11 @@ def _get_setlist(slug):
 
 def _setlist_view(sl):
     songs = {slug: library.get_song(slug) for slug in {i["song"] for i in sl["items"]}}
+    # "video": la altura del video (720, 1080…) o None. El Show la usa para marcar qué canción tiene visuales.
     return {**sl,
-            "songs": {k: {"name": v["name"], "duration": v["duration"]} if v else None for k, v in songs.items()},
+            "songs": {k: {"name": v["name"], "duration": v["duration"],
+                          "video": (v.get("video") or {}).get("height")} if v else None
+                      for k, v in songs.items()},
             "problems": setlists.check(sl)}
 
 

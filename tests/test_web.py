@@ -33,6 +33,7 @@ def test_biblioteca_y_set_lists(client, tmp_path):
     assert body["slug"] == "ensayo" and body["name"] == "Ensayo del viernes"
     assert body["items"] == [{"song": "uno", "behavior": "wait", "wait": 5.0, "block": "Bloque 1", "note": ""}]
     assert body["problems"] == [] and body["songs"]["uno"]["name"] == "Uno"
+    assert body["songs"]["uno"]["video"] is None  # con video: la altura (720, 1080…), para marcarlo en el Show
 
     assert client.put("/api/setlists/ensayo", json={"name": "x", "items": [{"song": "nada"}]}).status_code == 400
     bad_wait = {"name": "x", "items": [{"song": "uno", "behavior": "wait", "wait": 0}]}
